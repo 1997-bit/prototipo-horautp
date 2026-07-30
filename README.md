@@ -36,11 +36,11 @@ de la materia $c$.
 
 Una sección por materia:
 
-$$\sum_{s \in S_c} x_s = 1 \qquad \forall\, c \in C_{\text{requeridas}}$$
+$$\sum_{s \in S_c} x_s = 1$$
 
-Dos bloques chocan si:
+Dos bloques chocan si son del mismo día y:
 
-$$\text{choca}(a, b) \iff \text{día}_a = \text{día}_b \;\wedge\; \text{inicio}_a < \text{fin}_b \;\wedge\; \text{inicio}_b < \text{fin}_a$$
+$$\text{inicio}_a < \text{fin}_b \quad \text{y} \quad \text{inicio}_b < \text{fin}_a$$
 
 Si dos secciones de materias distintas chocan, son excluyentes:
 
@@ -76,31 +76,26 @@ $$
 \end{cases}
 $$
 
-Una sección cumple la preferencia $h^*_c$ solo si todos sus bloques
-caen en esa franja:
+Una sección cumple la preferencia $h^{*}_{c}$ solo si todos sus bloques
+caen en esa franja, es decir para cada bloque $b$ de la sección
+$\text{franja}(b) = h^{*}_{c}$.
+
+Penalización de una sección (0 si cumple, el peso si no):
 
 $$
-\text{horario\_ok}(s, h^*_c) = \bigl(\forall\, b \in \text{bloques}(s):\ \text{franja}(b) = h^*_c\bigr)
-$$
-
-Profesor preferido: substring, sin distinguir mayúsculas.
-
-Penalización de una sección:
-
-$$
-\text{pen}(s) = w_{\text{horario}} \cdot \mathbb{1}[\neg\,\text{horario\_ok}(s, h^*_c)] + w_{\text{profesor}} \cdot \mathbb{1}[\neg\,\text{profesor\_ok}(s, p^*_c)]
+\text{pen}(s) = w_{\text{horario}} \cdot [\text{horario no cumple}] + w_{\text{profesor}} \cdot [\text{profesor no cumple}]
 $$
 
 Exceso de días, si hay `dias_max` y $D(c)$ es el set de días usados:
 
 $$
-\text{exceso}(c) = \max\bigl(0,\ |D(c)| - d_{\text{max}}\bigr)
+\text{exceso}(c) = \max(0, |D(c)| - d_{\text{max}})
 $$
 
 Penalización total de una combinación (así se ordenan las opciones):
 
 $$
-P(c) = \sum_{s \,\in\, c} \text{pen}(s) + w_{\text{dias}} \cdot \text{exceso}(c)
+P(c) = \sum_{s \in c} \text{pen}(s) + w_{\text{dias}} \cdot \text{exceso}(c)
 $$
 
 ### Pesos por defecto
@@ -122,7 +117,7 @@ períodos, 145 min son 3, etc. Un bloque entra en un período si el período
 cabe completo dentro del bloque:
 
 $$
-b_s \le p_s \;\wedge\; p_e \le b_e
+b_s \le p_s \quad \text{y} \quad p_e \le b_e
 $$
 
 Si un CSV distinto trae bloques que no encajan en esta tabla, igual se
