@@ -1,142 +1,115 @@
-# Optimizador de Horarios UTP
+# Horario UTP
 
-TUI que arma el horario semanal desde `data/horarios.csv` usando
-[OR-Tools](https://developers.google.com/optimization/) para
-encontrar todas las combinaciones de secciones sin choques, ordenadas
-según qué tanto cumplen tus preferencias.
+Web estática que arma tu horario de la UTP sin choques, ordenado según
+tus preferencias. HTML, CSS y JS vanilla: sin build, sin dependencias,
+todo corre en el navegador.
 
-## Stack
-
-`ortools` , `pandas` `textual` / `rich` 
-
-## Archivos
-
-| Archivo              | Qué hace                                  |
-| -------------------- | ----------------------------------------- |
-| `data/horarios.csv`  | input                                     |
-| `src/parser.py`      | CSV → `Slot[]`                            |
-| `src/model.py`       | agrupa slots en secciones, modelo CP-SAT  |
-| `src/preferences.py` | DSL de preferencias y penalización        |
-| `src/grid.py`        | pivotea secciones en grilla período x día |
-| `src/tui.py`         | las 4 pantallas                           |
-| `main.py`            | entry point                               |
-
-## Slot vs Sección
-
-Cada fila del CSV es un bloque (`Slot`): materia, día, hora. Lo que se
-elige es una **sección**: todas las filas que comparten
-`(grupo, codasig, codhora)`. Clase y Lab de la misma materia comparten
-`codhora`, así que quedan pegadas en una sola sección. Por eso no hace
-falta una regla aparte de "si hay Lab, tomar su Clase".
-
-## Restricciones duras
-
-$x_s \in \{0,1\}$: se eligió la sección $s$. $S_c$: secciones candidatas
-de la materia $c$.
-
-Una sección por materia:
-
-$$\sum_{s \in S_c} x_s = 1$$
-
-Dos bloques chocan si son del mismo día y:
-
-$$\text{inicio}_a < \text{fin}_b \quad \text{y} \quad \text{inicio}_b < \text{fin}_a$$
-
-Si dos secciones de materias distintas chocan, son excluyentes:
-
-$$x_a + x_b \le 1$$
-
-## Enumeración de todas las combinaciones
-
-`solve_all_schedules` arma el modelo solo con las restricciones duras
-(sin objetivo) y le pide a CP-SAT enumerar todas las soluciones factibles:
-`enumerate_all_solutions = True`, `num_search_workers = 1` (la
-enumeración completa requiere un solo hilo).
-
-Límite de seguridad: corta en `MAX_SOLUTIONS = 500` o `30s`, lo que
-pase primero. Si corta, marca `capped: True`.
-
-## Preferencias y penalización
-
-```python
-prefs = {
-  "1474": {"horario": "tarde", "profesor": "ZURITA"},
-  "global": {"dias_max": 4, "weights": {...}},   # weights opcional
-}
-```
-
-Franja horaria según hora de inicio $h$:
-
-$$
-\text{franja}(h) =
-\begin{cases}
-\text{mañana} & h < 12{:}00 \\
-\text{tarde}  & 12{:}00 \le h < 17{:}00 \\
-\text{noche}  & h \ge 17{:}00
-\end{cases}
-$$
-
-Una sección cumple la preferencia $h^{*}_{c}$ solo si todos sus bloques
-caen en esa franja, es decir para cada bloque $b$ de la sección
-$\text{franja}(b) = h^{*}_{c}$.
-
-Penalización de una sección (0 si cumple, el peso si no):
-
-$$
-\text{pen}(s) = w_{\text{horario}} \cdot [\text{horario no cumple}] + w_{\text{profesor}} \cdot [\text{profesor no cumple}]
-$$
-
-Exceso de días, si hay `dias_max` y $D(c)$ es el set de días usados:
-
-$$
-\text{exceso}(c) = \max(0, |D(c)| - d_{\text{max}})
-$$
-
-Penalización total de una combinación (así se ordenan las opciones):
-
-$$
-P(c) = \sum_{s \in c} \text{pen}(s) + w_{\text{dias}} \cdot \text{exceso}(c)
-$$
-
-### Pesos por defecto
-
-| Peso | Valor | Penaliza |
-|---|---|---|
-| $w_{\text{horario}}$ | 10 | fuera de la franja preferida |
-| $w_{\text{profesor}}$ | 15 | profesor distinto al preferido |
-| $w_{\text{dias}}$ | 20 | cada día extra sobre `dias_max` |
-
-Sobreescribibles con `prefs["global"]["weights"]`.
-
-## Grilla semanal
-
-La pantalla 3 pivotea los bloques en una grilla período x día, igual al
-formato de UTP. Los 11 períodos (12:50pm-1:35pm, ..., 9:10pm-9:55pm) se
-derivaron de las duraciones reales de bloque en el CSV: 95 min son 2
-períodos, 145 min son 3, etc. Un bloque entra en un período si el período
-cabe completo dentro del bloque:
-
-$$
-b_s \le p_s \quad \text{y} \quad p_e \le b_e
-$$
-
-Si un CSV distinto trae bloques que no encajan en esta tabla, igual se
-muestran en filas aparte con su hora exacta.
+La versión anterior (TUI en Python con OR-Tools) está en [`legacy/`](legacy/).
 
 ## Uso
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python main.py
+python3 -m http.server     # o cualquier servidor estático
+# abrir http://localhost:8000
 ```
 
-## Pantallas
+Hace falta servirlo por HTTP (los ES modules no cargan desde `file://`).
+Para publicarlo basta con GitHub Pages apuntando a la raíz del repo.
 
-1. Materias: checklist de materias requeridas.
-2. Preferencias: franja (Mañana/Tarde/Noche/Cualquiera) y profesor por
-   materia, `dias_max` global.
-3. Resolver: grilla semanal, tabla de materias asignadas, validación de
-   preferencias, navegación entre opciones.
-4. Exportar: CSV o `.ics` de la opción actual.
+1. **Datos:** en el portal de Matrícula abre *Grupos por Asignatura →
+   Horario del Grupo*, copia toda la página y pégala. También acepta el
+   `.html` guardado o un `.json` de grupos.
+2. **Materias** a inscribir.
+3. **Preferencias:** franja y profesor por materia, máximo de días, evitar
+   huecos y preferir pocos grupos.
+4. **Opciones:** las 50 mejores combinaciones, de menor a mayor penalidad.
+5. **Exportar:** `.ics` (Google Calendar, Outlook), CSV o imprimir.
 
+## Archivos
+
+| Archivo | Qué hace |
+|---|---|
+| `js/periodos.js` | grilla de períodos, franjas, normalización de texto |
+| `js/bits.js` | popcount y huecos sobre máscaras |
+| `js/modelo.js` | grupos → secciones con máscaras por día |
+| `js/preferencias.js` | pesos y penalización por sección |
+| `js/solver.js` | búsqueda con poda, top-K exacto |
+| `js/entrada.js` | tabla HTML del portal → grupo |
+| `js/exportar.js` | `.ics` y CSV |
+| `js/estado.js` | localStorage |
+| `js/ui.js`, `js/main.js` | pantallas y navegación por hash |
+| `tools/csv-a-json.js` | `data/horarios.csv` → `data/ejemplo.json` |
+
+## Datos
+
+### Grilla de períodos
+
+Todas las clases de la UTP caen en períodos de 45 min que arrancan cada
+50 min desde las 7:00:
+
+$$\text{inicio}(k) = 7{:}00 + 50k \qquad \text{fin} = \text{inicio} + 45$$
+
+Un bloque son $n$ períodos seguidos (dura $50n - 5$ min). Por eso un bloque
+se guarda como `[dia, k, n, tipo, aula]` y no hacen falta horas en ningún
+cálculo. Franjas: mañana $k \le 6$ (7:00–12:45), tarde $7 \le k \le 11$
+(12:50–4:55), noche $k \ge 12$.
+
+### Formato de un grupo
+
+```json
+{"grupo": "1GS232", "periodo": "II-2026", "sede": "PANAMA", "materias": [
+  {"codasig": "1481", "codhora": 2682, "asignatura": "SISTEMAS OPERATIVOS",
+   "profesor": "ZURITA, ARMANDO", "email": "...",
+   "bloques": [[0, 13, 2, "L", "3-401"], [1, 15, 2, "C", "3-301"]]}
+]}
+```
+
+Una **sección** es una materia de un grupo y se identifica por `codhora`.
+Clase y Lab de la misma materia comparten `codhora`, así que van juntos.
+
+### Códigos
+
+- `grupo` `1GS232` = sede (1 Panamá, 4 Veraguas) · carrera (GS) · turno
+  (1 diurno, 2 nocturno) · año · número de grupo.
+- `codhora` es correlativo: cada grupo recibe un bloque seguido, con las
+  materias siempre en el mismo orden del plan.
+
+## Modelo
+
+Cada sección tiene una máscara de 32 bits por día (un bit por período).
+Dos secciones chocan si para algún día `a[d] & b[d] ≠ 0`.
+
+Restricciones duras: exactamente una sección por materia y sin choques.
+
+Penalidad de una combinación $c$:
+
+$$P(c) = \sum_{s \in c} \text{pen}(s) + w_d \max(0, |D| - d_{\max}) + w_h \cdot \text{huecos} + w_g \max(0, |G| - 1)$$
+
+| Peso | Valor | Penaliza |
+|---|---|---|
+| horario | 10 | sección fuera de la franja pedida |
+| profesor | 15 | profesor distinto al pedido |
+| dias | 20 | cada día por encima del máximo |
+| hueco | 5 | cada período libre entre clases del mismo día (si se activa) |
+| grupo | 10 | cada grupo distinto después del primero (si se activa) |
+
+### Búsqueda
+
+Búsqueda en profundidad con poda que guarda las $K = 50$ mejores:
+
+- materias con menos secciones primero, y dentro de cada una, secciones de
+  menor penalidad primero;
+- se poda si `penalidad acumulada + mínimo posible de lo que falta ≥ peor
+  del top-K`. Días y grupos solo crecen, así que entran en la cota; los
+  huecos no (una clase nueva puede llenar uno) y se suman al final.
+
+El resultado es exacto: siempre son las K mejores, no una muestra.
+
+## Tests
+
+```bash
+node --test tests/
+```
+
+El solver se compara contra una fuerza bruta independiente con varias
+combinaciones de preferencias.
