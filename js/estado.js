@@ -3,7 +3,8 @@
 
 /**
  * @typedef {{grupos: import("./modelo.js").Grupo[], requeridas: string[],
- *            prefs: import("./preferencias.js").Prefs & {materias: Record<string, import("./preferencias.js").PrefMateria>},
+ *            prefs: import("./preferencias.js").Prefs & {materias: Record<string, import("./preferencias.js").PrefMateria>,
+ *                                                          fijas: number[], excluidas: number[]},
  *            inicio: string, semanas: number}} Estado
  */
 
@@ -13,7 +14,7 @@ const CLAVE = "horautp:v1";
 const vacio = () => ({
   grupos: [],
   requeridas: [],
-  prefs: { materias: {}, diasMax: null, evitarHuecos: false, unGrupo: false },
+  prefs: { materias: {}, diasMax: null, evitarHuecos: false, unGrupo: false, fijas: [], excluidas: [] },
   inicio: "",
   semanas: 16,
 });

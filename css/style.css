@@ -175,6 +175,19 @@ thead th { background: var(--fondo); }
   .pref label.opcion { justify-content: flex-start; }
 }
 
+.aviso {
+  border-left: 4px solid var(--acento);
+  background: var(--superficie);
+  padding: .5rem .75rem;
+  border-radius: .25rem;
+}
+.cargando { color: var(--tenue); }
+.cambios { font-size: .9rem; color: var(--tenue); text-align: center; }
+.clase.cambio { outline: 2px dashed var(--texto); outline-offset: -3px; }
+tr.cambio td:first-child { box-shadow: inset 4px 0 var(--acento); }
+.acciones-fila { white-space: nowrap; }
+.acciones-fila button + button { margin-left: .25rem; }
+
 footer { color: var(--tenue); font-size: .85rem; padding-bottom: 2rem; }
 
 @media print {

@@ -11,7 +11,10 @@ import { franjaDe, normalizar } from "./periodos.js";
  * @typedef {{horario?: string, profesor?: string}} PrefMateria
  * @typedef {{materias?: Record<string, PrefMateria>, diasMax?: number | null,
  *            evitarHuecos?: boolean, unGrupo?: boolean,
+ *            fijas?: number[], excluidas?: number[],
  *            pesos?: Partial<typeof PESOS>}} Prefs
+ *   fijas / excluidas: codhora. Si una materia tiene una sección fija, solo
+ *   se considera esa.
  * @typedef {import("./modelo.js").Seccion} Seccion
  */
 

@@ -7,7 +7,7 @@ import { aCsv, aIcs } from "./exportar.js";
 import { construirSecciones, listarMaterias, nombreTipo } from "./modelo.js";
 import { DIAS, DIAS_CORTO, rangoPeriodo } from "./periodos.js";
 import { estadoSeccion } from "./preferencias.js";
-import { K_POR_DEFECTO, resolver } from "./solver.js";
+import { K_POR_DEFECTO, MS_MAX, resolver } from "./solver.js";
 import { guardar } from "./estado.js";
 
 /**
@@ -15,7 +15,9 @@ import { guardar } from "./estado.js";
  * @typedef {import("./modelo.js").Seccion} Seccion
  * @typedef {import("./modelo.js").Grupo} Grupo
  * @typedef {import("./solver.js").Resultado} Resultado
- * @typedef {{estado: Estado, secciones: Seccion[], resultado: Resultado | null, opcion: number}} App
+ * @typedef {{estado: Estado, secciones: Seccion[], resultado: Resultado | null, opcion: number,
+ *            pedido: number, enCurso: number}} App
+ *   pedido: id de la última búsqueda pedida; enCurso: la que está corriendo (0 = ninguna)
  */
 
 // ---------- helpers ----------
@@ -51,7 +53,63 @@ function cambio(app) {
   app.secciones = construirSecciones(app.estado.grupos);
   app.resultado = null;
   app.opcion = 0;
+  app.enCurso = 0; // si había una búsqueda corriendo, su resultado se descarta
   guardar(app.estado);
+}
+
+/** @type {Worker | null} */
+let worker = null;
+
+/**
+ * Lanza el solver en el Worker. Si había otra búsqueda corriendo la corta.
+ * Sin soporte de Workers, resuelve en el hilo principal.
+ * @param {App} app
+ */
+function buscar(app) {
+  const id = ++app.pedido;
+  app.enCurso = id;
+  const { requeridas, prefs } = app.estado;
+  const listo = (/** @type {Resultado} */ r) => {
+    if (app.enCurso !== id) return;
+    app.enCurso = 0;
+    app.resultado = r;
+    app.opcion = 0;
+    if (location.hash === "#opciones") renderOpciones(app);
+  };
+  const enHilo = () => listo(resolver(app.secciones, requeridas, prefs));
+  try {
+    worker?.terminate();
+    worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
+    worker.onmessage = (e) => listo(e.data.resultado);
+    worker.onerror = (e) => {
+      e.preventDefault();
+      enHilo();
+    };
+    worker.postMessage({ id, secciones: app.secciones, requeridas, prefs });
+  } catch {
+    enHilo();
+  }
+}
+
+/**
+ * Fija una sección (reemplaza otra fija de la misma materia) o la suelta.
+ * @param {App} app @param {Seccion} s
+ */
+function alternarFija(app, s) {
+  const p = app.estado.prefs;
+  const misma = new Set(app.secciones.filter((x) => x.codasig === s.codasig).map((x) => x.codhora));
+  p.fijas = p.fijas.includes(s.codhora)
+    ? p.fijas.filter((c) => c !== s.codhora)
+    : [...p.fijas.filter((c) => !misma.has(c)), s.codhora];
+  cambio(app);
+}
+
+/** @param {App} app @param {Seccion} s */
+function excluir(app, s) {
+  const p = app.estado.prefs;
+  p.excluidas = [...p.excluidas, s.codhora];
+  p.fijas = p.fijas.filter((c) => c !== s.codhora);
+  cambio(app);
 }
 
 /** @param {string} nombre @param {string} contenido @param {string} tipo */
@@ -192,6 +250,33 @@ const FRANJAS = [
   ["noche", "Noche (5:00 en adelante)"],
 ];
 
+/**
+ * Secciones fijadas o excluidas desde la pantalla de opciones.
+ * @param {App} app
+ */
+function restricciones(app) {
+  const { prefs } = app.estado;
+  /** @param {"fijas" | "excluidas"} lista @param {number} codhora */
+  const fila = (lista, codhora) => {
+    const s = app.secciones.find((x) => x.codhora === codhora);
+    return h("li", {},
+      h("span", {}, s ? `${s.asignatura} · ${s.grupo} · ${s.profesor}` : `codhora ${codhora} (grupo no cargado)`),
+      h("button", {
+        type: "button", class: "secundario chico",
+        onclick: () => {
+          prefs[lista] = prefs[lista].filter((c) => c !== codhora);
+          cambio(app);
+          renderPreferencias(app);
+        },
+      }, "Quitar"));
+  };
+  if (!prefs.fijas.length && !prefs.excluidas.length) return null;
+  return h("fieldset", { class: "pref" },
+    h("legend", {}, "Secciones fijadas y excluidas"),
+    prefs.fijas.length > 0 && [h("h3", {}, "Fijadas"), h("ul", { class: "lista" }, prefs.fijas.map((c) => fila("fijas", c)))],
+    prefs.excluidas.length > 0 && [h("h3", {}, "Excluidas"), h("ul", { class: "lista" }, prefs.excluidas.map((c) => fila("excluidas", c)))]);
+}
+
 /** @param {App} app */
 export function renderPreferencias(app) {
   const { requeridas, prefs } = app.estado;
@@ -250,16 +335,17 @@ export function renderPreferencias(app) {
         h("input", {
           type: "checkbox", checked: prefs.unGrupo,
           onchange: (/** @type {Event} */ e) => { prefs.unGrupo = /** @type {HTMLInputElement} */ (e.target).checked; actualizar(); },
-        }), "Preferir pocos grupos distintos")));
+        }), "Preferir pocos grupos distintos")),
+    restricciones(app));
 }
 
 // ---------- 4. Opciones ----------
 
 /**
  * Tabla semanal: fila = período, celda con rowspan = n.
- * @param {Seccion[]} secciones @param {Map<string, number>} tono
+ * @param {Seccion[]} secciones @param {Map<string, number>} tono @param {Set<number>} cambiadas
  */
-function grilla(secciones, tono) {
+function grilla(secciones, tono, cambiadas) {
   let kMin = Infinity, kMax = -1, diasUsados = 0;
   /** @type {Map<string, [Seccion, import("./modelo.js").Bloque]>} */
   const inicio = new Map();
@@ -284,9 +370,9 @@ function grilla(secciones, tono) {
         const c = inicio.get(`${d},${k}`);
         if (!c) return h("td", {});
         const [s, [, , n, tipo, aula]] = c;
-        return h("td", { rowSpan: n, class: "clase", style: `--h:${tono.get(s.codasig)}` },
+        return h("td", { rowSpan: n, class: cambiadas.has(s.codhora) ? "clase cambio" : "clase", style: `--h:${tono.get(s.codasig)}` },
           h("b", {}, s.asignatura),
-          h("small", {}, `${nombreTipo(tipo)} · ${aula}`));
+          h("small", {}, [nombreTipo(tipo), aula].filter(Boolean).join(" · ")));
       })));
   }
   return h("div", { class: "grilla" },
@@ -295,8 +381,11 @@ function grilla(secciones, tono) {
       h("tbody", {}, filas)));
 }
 
-/** Misma información por día, para pantallas angostas. @param {Seccion[]} secciones @param {Map<string, number>} tono */
-function porDia(secciones, tono) {
+/**
+ * Misma información por día, para pantallas angostas.
+ * @param {Seccion[]} secciones @param {Map<string, number>} tono @param {Set<number>} cambiadas
+ */
+function porDia(secciones, tono, cambiadas) {
   const dias = DIAS.map((nombre, d) => ({
     nombre,
     clases: secciones.flatMap((s) => s.bloques.filter((b) => b[0] === d).map((b) => ({ s, b })))
@@ -304,10 +393,10 @@ function porDia(secciones, tono) {
   })).filter((x) => x.clases.length);
   return h("ol", { class: "por-dia" }, dias.map(({ nombre, clases }) => h("li", {},
     h("h3", {}, nombre),
-    h("ul", {}, clases.map(({ s, b: [, k, n, tipo, aula] }) => h("li", { class: "clase", style: `--h:${tono.get(s.codasig)}` },
+    h("ul", {}, clases.map(({ s, b: [, k, n, tipo, aula] }) => h("li", { class: cambiadas.has(s.codhora) ? "clase cambio" : "clase", style: `--h:${tono.get(s.codasig)}` },
       h("span", { class: "hora" }, rangoPeriodo(k, n)),
       h("b", {}, s.asignatura),
-      h("small", {}, `${nombreTipo(tipo)} · ${aula}`)))))));
+      h("small", {}, [nombreTipo(tipo), aula].filter(Boolean).join(" · "))))))));
 }
 
 /** @param {boolean | null} v */
@@ -321,15 +410,33 @@ export function renderOpciones(app) {
     llenar("contenido-opciones", h("p", {}, "Primero elige tus ", h("a", { href: "#materias" }, "materias"), "."));
     return;
   }
-  app.resultado ??= resolver(app.secciones, requeridas, prefs);
+  if (!app.resultado) {
+    if (!app.enCurso) buscar(app);
+    llenar("contenido-opciones", h("p", { role: "status", class: "cargando" }, "Buscando combinaciones…"));
+    return;
+  }
   const r = app.resultado;
+  const nombre = (/** @type {string} */ c) => app.secciones.find((s) => s.codasig === c)?.asignatura ?? c;
+  const hayRestricciones = prefs.fijas.length > 0 || prefs.excluidas.length > 0;
+  const avisoRestricciones = hayRestricciones
+    && h("p", {}, "Tienes secciones fijadas o excluidas; puedes quitarlas en ", h("a", { href: "#preferencias" }, "Preferencias"), ".");
+
   if (r.estado === "FALTAN") {
-    llenar("contenido-opciones", h("p", { class: "error" }, `No hay secciones cargadas para: ${r.faltan.join(", ")}.`));
+    llenar("contenido-opciones",
+      h("p", { class: "error" }, `No quedan secciones para: ${r.faltan.map(nombre).join(", ")}.`),
+      avisoRestricciones);
     return;
   }
   if (r.estado === "SIN_SOLUCION") {
-    llenar("contenido-opciones", h("p", { class: "error" },
-      "No existe ninguna combinación sin choques con estas materias. Prueba cargar más grupos o quitar alguna materia."));
+    llenar("contenido-opciones",
+      h("p", { class: "error" }, r.parcial
+        ? `No se encontró ninguna combinación sin choques en ${MS_MAX / 1000} s.`
+        : "No existe ninguna combinación sin choques con estas materias."),
+      r.choques.length
+        ? h("ul", {}, r.choques.map(([a, b]) => h("li", {}, `${nombre(a)} y ${nombre(b)} chocan en todas sus secciones.`)))
+        : !r.parcial && h("p", {}, "Cada par de materias tiene alguna forma de encajar, pero no todas a la vez."),
+      h("p", {}, "Prueba cargar más grupos o quitar alguna materia."),
+      avisoRestricciones);
     return;
   }
 
@@ -339,8 +446,13 @@ export function renderOpciones(app) {
   const tono = new Map(requeridas.map((c, i) => [c, Math.round((i * 360) / requeridas.length)]));
   const ir = (/** @type {number} */ i) => { app.opcion = i; renderOpciones(app); };
   const { detalle: dt } = o;
+  const primera = new Set(r.opciones[0].secciones.map((s) => s.codhora));
+  const cambiadas = new Set(app.opcion ? o.secciones.filter((s) => !primera.has(s.codhora)).map((s) => s.codhora) : []);
 
   llenar("contenido-opciones",
+    r.parcial && h("p", { class: "aviso" },
+      `La búsqueda se cortó a los ${MS_MAX / 1000} s: estas opciones son buenas pero puede haber alguna mejor. `
+      + "Fijar secciones o quitar preferencias la hace más rápida."),
     h("div", { class: "navegar" },
       h("button", { type: "button", class: "secundario", disabled: app.opcion === 0, onclick: () => ir(app.opcion - 1), "aria-label": "Opción anterior" }, "‹"),
       h("p", { role: "status" },
@@ -348,20 +460,33 @@ export function renderOpciones(app) {
         h("br", {}),
         h("small", {}, `Penalidad ${o.penalidad} · ${dt.dias} días · ${dt.huecos} huecos · ${dt.grupos} ${dt.grupos === 1 ? "grupo" : "grupos"}`)),
       h("button", { type: "button", class: "secundario", disabled: app.opcion === total - 1, onclick: () => ir(app.opcion + 1), "aria-label": "Opción siguiente" }, "›")),
-    grilla(o.secciones, tono),
-    porDia(o.secciones, tono),
+    cambiadas.size > 0 && h("p", { class: "cambios" },
+      "Distinto a la opción 1: ",
+      o.secciones.filter((s) => cambiadas.has(s.codhora)).map((s) => `${s.asignatura} (${s.grupo})`).join(", "), "."),
+    grilla(o.secciones, tono, cambiadas),
+    porDia(o.secciones, tono, cambiadas),
     h("h3", {}, "Materias"),
     h("div", { class: "tabla" }, h("table", {},
-      h("thead", {}, h("tr", {}, ["Asignatura", "Grupo", "Profesor", "Franja", "Prof.", "Codhora"].map((t) => h("th", { scope: "col" }, t)))),
+      h("thead", {}, h("tr", {}, ["Asignatura", "Grupo", "Profesor", "Franja", "Prof.", ""].map((t) => h("th", { scope: "col" }, t)))),
       h("tbody", {}, o.secciones.map((s) => {
         const e = estadoSeccion(s, prefs.materias[s.codasig]);
-        return h("tr", {},
-          h("td", {}, s.asignatura),
+        const fija = prefs.fijas.includes(s.codhora);
+        return h("tr", { class: cambiadas.has(s.codhora) ? "cambio" : null },
+          h("td", {}, s.asignatura, h("br", {}), h("small", {}, `codhora ${s.codhora}`)),
           h("td", {}, s.grupo),
           h("td", {}, s.email ? h("a", { href: `mailto:${s.email}` }, s.profesor) : s.profesor),
           h("td", { class: "centro" }, marca(e.horario)),
           h("td", { class: "centro" }, marca(e.profesor)),
-          h("td", {}, String(s.codhora)));
+          h("td", { class: "acciones-fila" },
+            h("button", {
+              type: "button", class: `chico ${fija ? "" : "secundario"}`, "aria-pressed": String(fija),
+              title: fija ? "Soltar: volver a considerar las otras secciones" : "Fijar: usar siempre esta sección",
+              onclick: () => { alternarFija(app, s); renderOpciones(app); },
+            }, fija ? "Fijada" : "Fijar"),
+            h("button", {
+              type: "button", class: "chico secundario", title: "Excluir: no usar nunca esta sección",
+              onclick: () => { excluir(app, s); renderOpciones(app); },
+            }, "Excluir")));
       })))));
 }
 

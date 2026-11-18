@@ -9,7 +9,7 @@ import {
 
 const estado = cargar();
 /** @type {import("./ui.js").App} */
-const app = { estado, secciones: construirSecciones(estado.grupos), resultado: null, opcion: 0 };
+const app = { estado, secciones: construirSecciones(estado.grupos), resultado: null, opcion: 0, pedido: 0, enCurso: 0 };
 
 /** @type {Record<string, (app: import("./ui.js").App) => void>} */
 const PASOS = {
@@ -43,6 +43,9 @@ addEventListener("keydown", (e) => {
     renderOpciones(app);
   }
 });
+
+// Uso sin conexión. Solo funciona en https o localhost; si falla, la app sigue igual.
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 iniciarDatos(app);
 addEventListener("hashchange", rutear);

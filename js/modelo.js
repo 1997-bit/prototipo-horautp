@@ -17,7 +17,10 @@ import { bitsPeriodos } from "./bits.js";
  *
  * @typedef {{id: number, grupo: string, codasig: string, codhora: number,
  *            asignatura: string, profesor: string, email: string,
- *            bloques: Bloque[], masks: number[], dias: number}} Seccion
+ *            bloques: Bloque[], masks: number[], usos: number[], dias: number}} Seccion
+ *   masks: períodos ocupados por día (7 entradas).
+ *   usos: solo los días con clase, aplanado [d, mask, d, mask…]; el solver
+ *         recorre esto en lugar de los 7 días.
  */
 
 /** @type {Record<string, string>} */
@@ -50,6 +53,7 @@ export function construirSecciones(grupos) {
         email: m.email,
         bloques: [...m.bloques].sort((a, b) => a[0] - b[0] || a[1] - b[1]),
         masks,
+        usos: masks.flatMap((mk, d) => (mk ? [d, mk] : [])),
         dias,
       });
     }

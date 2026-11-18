@@ -1,0 +1,14 @@
+{
+  "name": "Horario UTP",
+  "short_name": "Horario UTP",
+  "description": "Arma tu horario de la UTP sin choques, ordenado según tus preferencias.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f7f8",
+  "theme_color": "#1f5fbf",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

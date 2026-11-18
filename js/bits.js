@@ -12,15 +12,18 @@ export function popcount(x) {
 }
 
 /**
- * Períodos libres entre la primera y la última clase de un día.
+ * Bits de los períodos libres entre la primera y la última clase de un día.
  * @param {number} mask
  */
-export function huecos(mask) {
+export function mascaraHuecos(mask) {
   if (!mask) return 0;
-  const primero = 31 - Math.clz32(mask & -mask);
-  const ultimo = 31 - Math.clz32(mask);
-  return ultimo - primero + 1 - popcount(mask);
+  const primero = mask & -mask;
+  const ultimo = 1 << (31 - Math.clz32(mask));
+  return ((ultimo - primero) | ultimo) & ~mask;
 }
+
+/** @param {number} mask */
+export const huecos = (mask) => popcount(mascaraHuecos(mask));
 
 /** @param {number} k @param {number} n */
 export const bitsPeriodos = (k, n) => ((1 << n) - 1) << k;

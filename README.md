@@ -23,7 +23,12 @@ Para publicarlo basta con GitHub Pages apuntando a la raíz del repo.
 3. **Preferencias:** franja y profesor por materia, máximo de días, evitar
    huecos y preferir pocos grupos.
 4. **Opciones:** las 50 mejores combinaciones, de menor a mayor penalidad.
+   Se puede fijar o excluir cada sección; se marca qué cambia respecto a la
+   opción 1. Si no hay solución, dice qué materias chocan siempre.
 5. **Exportar:** `.ics` (Google Calendar, Outlook), CSV o imprimir.
+
+Funciona sin conexión después de la primera visita (service worker
+network-first: con internet siempre usa la versión más nueva).
 
 ## Archivos
 
@@ -34,10 +39,12 @@ Para publicarlo basta con GitHub Pages apuntando a la raíz del repo.
 | `js/modelo.js` | grupos → secciones con máscaras por día |
 | `js/preferencias.js` | pesos y penalización por sección |
 | `js/solver.js` | búsqueda con poda, top-K exacto |
+| `js/worker.js` | corre el solver fuera del hilo principal |
 | `js/entrada.js` | tabla HTML del portal → grupo |
 | `js/exportar.js` | `.ics` y CSV |
 | `js/estado.js` | localStorage |
 | `js/ui.js`, `js/main.js` | pantallas y navegación por hash |
+| `sw.js`, `manifest.webmanifest`, `icon.svg` | uso sin conexión / instalable |
 | `tools/csv-a-json.js` | `data/horarios.csv` → `data/ejemplo.json` |
 
 ## Datos
@@ -95,15 +102,25 @@ $$P(c) = \sum_{s \in c} \text{pen}(s) + w_d \max(0, |D| - d_{\max}) + w_h \cdot 
 
 ### Búsqueda
 
-Búsqueda en profundidad con poda que guarda las $K = 50$ mejores:
+Búsqueda en profundidad con poda que guarda las $K = 50$ mejores. En cada
+nodo revisa, para cada materia pendiente, qué secciones todavía caben
+(*forward checking*):
 
-- materias con menos secciones primero, y dentro de cada una, secciones de
-  menor penalidad primero;
-- se poda si `penalidad acumulada + mínimo posible de lo que falta ≥ peor
-  del top-K`. Días y grupos solo crecen, así que entran en la cota; los
-  huecos no (una clase nueva puede llenar uno) y se suman al final.
+- si una materia se quedó sin secciones, la rama se corta ahí;
+- se ramifica primero por la materia con menos secciones que caben;
+- la cota suma lo mínimo que todavía puede costar cada componente:
+  la mejor sección que cabe en cada materia pendiente; los días actuales
+  más los que alguna materia obliga a agregar; un grupo más si alguna
+  materia no cabe en ningún grupo ya usado; y los huecos actuales que
+  ninguna sección pendiente puede llenar.
 
-El resultado es exacto: siempre son las K mejores, no una muestra.
+Si la cota no mejora a la peor del top-K, la rama se poda. El resultado es
+exacto, salvo que la búsqueda pase de 1.5 s: entonces devuelve lo mejor que
+encontró y la UI avisa que es parcial. Corre en un Web Worker, así que la
+página nunca se congela.
+
+Secciones fijadas: de esa materia solo se considera la fijada. Excluidas:
+no se consideran.
 
 ## Tests
 
@@ -111,5 +128,6 @@ El resultado es exacto: siempre son las K mejores, no una muestra.
 node --test tests/
 ```
 
-El solver se compara contra una fuerza bruta independiente con varias
-combinaciones de preferencias.
+El solver se compara contra una fuerza bruta independiente (datos de
+ejemplo y 300 instancias aleatorias). `tests/rendimiento.test.js` fija los
+casos que antes tardaban más de 20 s: tienen que terminar exactos.
