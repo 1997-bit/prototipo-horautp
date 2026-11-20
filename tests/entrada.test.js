@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { grupoDesdeCrudo, leerCelda } from "../js/entrada.js";
+import { grupoDesdeCrudo, grupoManual, leerCelda } from "../js/entrada.js";
 
-// Reconstruido a mano del "Horario del Grupo" 4GS111 (Veraguas) del portal.
+// "Horario del Grupo" 4GS111 del portal.
 const C = (nombre, aula = "4C1") => `${nombre}\naula ${aula}`;
 const TRAB = C("TRAB. EN EQUIPO"), FM = C("FUND. MAT. II"), FML = C("FUND. MAT. II(L )");
 const DS = C("DES. DE SOFT.II"), DSL = C("DES. DE SOFT.II(L )", "4fis");
@@ -64,4 +64,60 @@ test("celda que no está en la leyenda", () => {
   const malo = structuredClone(crudo);
   malo.tablas[0][1][1] = C("QUIMICA");
   assert.throws(() => grupoDesdeCrudo(malo), /QUIMICA/);
+});
+
+// "Horarios de Grupos" 1LB421: con botones de grupos antes del horario.
+const LAB = (n, aula = "TD-4") => `${n}(L )\naula ${aula}`;
+const nocturno = {
+  texto: "Matrícula UTP Periodo: II-2026 Horarios de Grupos Grupos 1LB111 1LB112 1LB113 1LB421 "
+    + "UNIVERSIDAD TECNOLÓGICA DE PANAMÁ FACULTAD DE INGENIERÍA MECÁNICA SEDE PANAMÁ HORARIO DE CLASE "
+    + "GRUPO: 1LB421 CARRERA: LIC. EN MECANICA AUTOMOTRIZ NIVEL: II AÑO TURNO: NOCTURNO HORA LUNES",
+  tablas: [
+    [
+      ["HORA", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO"],
+      ...["8:20-9:05P.M.", "9:10-9:55P.M.", "10:00-10:45P.M."].map((h) => [
+        h, LAB("LAB.AIRE ACOND."), LAB("LAB. MOT.DIESEL"), "", LAB("LAB.ELECT.APLIC", "1-216"), LAB("LAB. MOT.GAS.I"), "", "",
+      ]),
+    ],
+    [
+      ["ASIGNATURA", "CODASIG", "CODHORA", "PROFESOR", "EMAIL", "SEDE *"],
+      ["LAB.AIRE ACOND.", "4482", "1894", "QUINTERO, EZEQUIEL", "ezequiel.quintero@utp.ac.pa", ""],
+      ["LAB. MOT.GAS.I", "4484", "1895", "PEREZ, ADRIAN", "adrian.perez@utp.ac.pa", ""],
+      ["LAB.ELECT.APLIC", "4486", "1896", "ACOSTA, ISAAC", "isaac.acosta@utp.ac.pa", ""],
+      ["LAB. MOT.DIESEL", "4490", "1897", "FRANCO, JORGE", "jorge.franco@utp.ac.pa", ""],
+    ],
+  ],
+};
+
+test("Horarios de Grupos: el código es el del horario, no el primer botón", () => {
+  const g = grupoDesdeCrudo(nocturno);
+  assert.equal(g.grupo, "1LB421");
+  assert.equal(g.periodo, "II-2026");
+  assert.deepEqual(g.materias.find((m) => m.codasig === "4482").bloques, [[0, 16, 3, "L", "TD-4"]]);
+});
+
+test("materia a mano: se une a la del portal por nombre", () => {
+  const portal = grupoDesdeCrudo(structuredClone(crudo));
+  const g = grupoManual({
+    asignatura: " base de  datos i ", profesor: "Pérez,  Eric", grupo: "1gs 221",
+    bloques: [[3, 2, 2, "C", ""], [1, 0, 2, "L", "4fis"]],
+  }, [portal]);
+  assert.equal(g.grupo, "1GS221");
+  assert.equal(g.manual, true);
+  const [m] = g.materias;
+  assert.equal(m.codasig, "8398");
+  assert.equal(m.codhora, -1);
+  assert.equal(m.profesor, "Pérez, Eric");
+  assert.deepEqual(m.bloques, [[1, 0, 2, "L", "4fis"], [3, 2, 2, "C", ""]]);
+
+  const otra = grupoManual({ asignatura: "Redes", profesor: "", grupo: "", bloques: [[0, 0, 1, "C", ""]] }, [portal, g]);
+  assert.equal(otra.materias[0].codhora, -2);
+  assert.equal(otra.materias[0].codasig, "M-REDES");
+});
+
+test("materia a mano: errores", () => {
+  const base = { asignatura: "Redes", profesor: "", grupo: "" };
+  assert.throws(() => grupoManual({ ...base, asignatura: " ", bloques: [[0, 0, 1, "C", ""]] }, []), /nombre/);
+  assert.throws(() => grupoManual({ ...base, bloques: [] }, []), /al menos/);
+  assert.throws(() => grupoManual({ ...base, bloques: [[0, 0, 2, "C", ""], [0, 1, 1, "L", ""]] }, []), /lunes se pisan/);
 });

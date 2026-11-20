@@ -1,23 +1,26 @@
-// Service worker: permite abrir la app sin conexión.
-// Estrategia network-first: con internet siempre se usa la versión más nueva
-// (y se guarda en caché); sin internet se sirve lo guardado.
+// Offline, stale-while-revalidate.
 
-const CACHE = "horautp-v1";
+const CACHE = "horautp-v37";
+const ORIGEN = `${location.origin}/`;
 const ARCHIVOS = [
   "./",
   "index.html",
   "manifest.webmanifest",
-  "icon.svg",
   "css/style.css",
+  "js/agentes.js",
+  "js/ajustes.js",
+  "js/atajos.js",
   "js/bits.js",
+  "js/calendario.js",
+  "js/dom.js",
   "js/entrada.js",
   "js/estado.js",
-  "js/exportar.js",
   "js/main.js",
   "js/modelo.js",
   "js/periodos.js",
   "js/preferencias.js",
   "js/solver.js",
+  "js/tema.js",
   "js/ui.js",
   "js/worker.js",
   "data/ejemplo.json",
@@ -37,16 +40,12 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const req = e.request;
-  if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
-  e.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res.ok) {
-          const copia = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copia));
-        }
-        return res;
-      })
-      .catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r ?? Response.error())),
-  );
+  if (req.method !== "GET" || !req.url.startsWith(ORIGEN)) return;
+  const red = fetch(req);
+  e.waitUntil(red.then((res) => {
+    if (!res.ok) return;
+    const copia = res.clone();
+    return caches.open(CACHE).then((c) => c.put(req, copia));
+  }).catch(() => {}));
+  e.respondWith(caches.match(req, { ignoreSearch: true }).then((r) => r ?? red).catch(() => Response.error()));
 });

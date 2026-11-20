@@ -1,15 +1,7 @@
 // @ts-check
-// Página "Horario del Grupo" del portal de Matrícula → Grupo.
-//
-// Dos pasos para poder testear sin navegador:
-//   crudoDesdeDocumento(doc)  DOM → {texto, tablas}   (solo navegador)
-//   grupoDesdeCrudo(crudo)    {texto, tablas} → Grupo (puro)
-//
-// La grilla tiene una fila por período y una columna por día; cada celda
-// dice "ASIGNATURA(L )" y "aula X". La tabla de leyenda mapea el nombre
-// abreviado a codasig, codhora, profesor y email.
+// "Horario del Grupo" del portal → Grupo. DOM → Crudo → Grupo (puro).
 
-import { diaIndex, minDesdeTexto, normalizar, periodoDesdeMin } from "./periodos.js";
+import { DIAS, diaIndex, limpio, minDesdeTexto, normalizar, periodoDesdeMin } from "./periodos.js";
 
 /**
  * @typedef {import("./modelo.js").Grupo} Grupo
@@ -24,13 +16,10 @@ function textoCelda(celda) {
   const c = /** @type {Element} */ (celda.cloneNode(true));
   c.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
   return (c.textContent ?? "")
-    .split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n");
+    .split("\n").map(limpio).filter(Boolean).join("\n");
 }
 
-/**
- * Tabla → matriz de textos, expandiendo rowspan/colspan.
- * @param {HTMLTableElement} tabla
- */
+/** Expande rowspan/colspan. @param {HTMLTableElement} tabla */
 function matriz(tabla) {
   /** @type {string[][]} */
   const out = [];
@@ -49,11 +38,7 @@ function matriz(tabla) {
   return out.map((f) => Array.from(f, (x) => x ?? ""));
 }
 
-/**
- * Texto de la página con un espacio entre nodos. textContent los pega
- * ("4GS111Periodo") y el código de grupo deja de verse como palabra.
- * @param {Document} doc
- */
+/** textContent pegaría "4GS111Periodo". @param {Document} doc */
 function textoPagina(doc) {
   if (!doc.body) return "";
   const partes = [];
@@ -80,22 +65,36 @@ export function grupoDesdeHtml(html) {
 // "SEDE: PANAMÁ" (PDF) o "VERAGUAS - 4GS111" (portal)
 const SEDES = ["BOCAS DEL TORO", "PANAMA OESTE", "PANAMA", "AZUERO", "CHIRIQUI", "COCLE", "COLON", "VERAGUAS"];
 const RE_SEDE = new RegExp(`(?:SEDE:\\s*|\\b)(${SEDES.join("|")})\\b(?=\\s*(?:CARRERA|-\\s*\\d[A-Z]))`);
+// "GRUPO:" primero: antes van los botones de otros grupos.
+const RE_GRUPO_ROTULO = /GRUPO:\s*(\d[A-Z]{1,4}\d{3})\b/;
+const RE_GRUPO = /\b(\d[A-Z]{1,4}\d{3})\b/;
+const RE_PERIODO = /\b(I{1,3})\s*-\s*(\d{4})\b/;
+const RE_PERIODO_ROTULO = /PERIODO:\s*(I{1,3})\b/;
+const RE_ANO = /ANO:\s*(\d{4})/;
+const RE_AULA = /\baula:?\s*(.+)/i;
+const RE_CL = /\(\s*C\s*\+\s*L\s*\)/i;
+const RE_L = /\(\s*L\s*\)/i;
+const RE_PARENTESIS_FINAL = /\([^)]*\)\s*$/;
+const RE_NO_CLAVE = /[^A-Z0-9]/g;
+const RE_SALTOS = /\n/g;
+const RE_ENTERO = /^\d+$/;
+const RE_ESPACIO = /\s/g;
 
-/** Clave para unir celda y leyenda: "BASE DE\nDATOS I" ≡ "BASE DE DATOS I". @param {string} s */
-const clave = (s) => normalizar(s).replace(/[^A-Z0-9]/g, "");
+/** @param {string} s */
+const clave = (s) => normalizar(s).replace(RE_NO_CLAVE, "");
 
 /**
  * "ESTRUCT.DATOS I(L )\naula 4fis" → {nombre, tipo, aula}
  * @param {string} texto
  */
 export function leerCelda(texto) {
-  const m = /\baula:?\s*(.+)/i.exec(texto);
+  const m = RE_AULA.exec(texto);
   const aula = m ? m[1].split("\n")[0].trim() : "";
-  const antes = (m ? texto.slice(0, m.index) : texto).replace(/\n/g, " ");
+  const antes = (m ? texto.slice(0, m.index) : texto).replace(RE_SALTOS, " ");
   let tipo = "C";
-  if (/\(\s*C\s*\+\s*L\s*\)/i.test(antes)) tipo = "CL";
-  else if (/\(\s*L\s*\)/i.test(antes)) tipo = "L";
-  const nombre = antes.replace(/\([^)]*\)\s*$/, "").trim();
+  if (RE_CL.test(antes)) tipo = "CL";
+  else if (RE_L.test(antes)) tipo = "L";
+  const nombre = antes.replace(RE_PARENTESIS_FINAL, "").trim();
   return { nombre, tipo, aula };
 }
 
@@ -124,21 +123,18 @@ function leerLeyenda(t) {
     col("ASIGNATURA"), col("CODASIG"), col("CODHORA"), col("PROFESOR"), col("EMAIL", "CORREO"),
   ];
   return t.slice(iCab + 1)
-    .filter((f) => /^\d+$/.test(f[cCodhora]?.trim() ?? ""))
+    .filter((f) => RE_ENTERO.test(f[cCodhora]?.trim() ?? ""))
     .map((f) => ({
       codasig: f[cCodasig].trim(),
       codhora: Number(f[cCodhora]),
-      asignatura: f[cAsig].replace(/\s+/g, " ").trim(),
-      profesor: (f[cProf] ?? "").replace(/\s+/g, " ").trim(),
+      asignatura: limpio(f[cAsig]),
+      profesor: limpio(f[cProf] ?? ""),
       email: (f[cEmail] ?? "").trim(),
       bloques: [],
     }));
 }
 
-/**
- * @param {string[][]} t
- * @param {Materia[]} materias se les agregan los bloques
- */
+/** @param {string[][]} t @param {Materia[]} materias */
 function leerGrilla(t, materias) {
   const iCab = t.findIndex((f) => f.filter((c) => diaIndex(c) >= 0).length >= 5);
   const colDia = t[iCab].map(diaIndex);
@@ -155,7 +151,6 @@ function leerGrilla(t, materias) {
     return m;
   };
 
-  /** Última racha abierta por día: [materia, bloque] */
   /** @type {([Materia, import("./modelo.js").Bloque] | null)[]} */
   const abierto = [null, null, null, null, null, null, null];
 
@@ -193,22 +188,19 @@ export function grupoDesdeCrudo(crudo) {
   for (const m of materias) m.bloques.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 
   const texto = normalizar(crudo.texto);
-  const grupo = /\b(\d[A-Z]{1,4}\d{3})\b/.exec(texto)?.[1]
+  const grupo = RE_GRUPO_ROTULO.exec(texto)?.[1]
+    ?? RE_GRUPO.exec(texto)?.[1]
     ?? `SIN-CODIGO-${Math.min(...materias.map((m) => m.codhora))}`;
-  const per = /\b(I{1,3})\s*-\s*(\d{4})\b/.exec(texto);
+  const per = RE_PERIODO.exec(texto);
   const periodo = per
     ? `${per[1]}-${per[2]}`
-    : [/PERIODO:\s*(I{1,3})\b/.exec(texto)?.[1], /ANO:\s*(\d{4})/.exec(texto)?.[1]].filter(Boolean).join("-");
+    : [RE_PERIODO_ROTULO.exec(texto)?.[1], RE_ANO.exec(texto)?.[1]].filter(Boolean).join("-");
   const sede = RE_SEDE.exec(texto)?.[1];
 
   return { grupo, periodo, ...(sede ? { sede } : {}), materias };
 }
 
-/**
- * Valida un JSON cargado por el usuario (un grupo o una lista).
- * @param {unknown} datos
- * @returns {Grupo[]}
- */
+/** @param {unknown} datos @returns {Grupo[]} */
 export function gruposDesdeJson(datos) {
   const lista = Array.isArray(datos) ? datos : [datos];
   for (const g of lista) {
@@ -217,4 +209,37 @@ export function gruposDesdeJson(datos) {
     }
   }
   return lista;
+}
+
+/**
+ * @typedef {{asignatura: string, profesor: string, grupo: string,
+ *            bloques: import("./modelo.js").Bloque[]}} Manual
+ */
+
+/**
+ * Reusa el codasig de una materia homónima; codhora negativo.
+ * @param {Manual} datos @param {Grupo[]} grupos @returns {Grupo}
+ */
+export function grupoManual(datos, grupos) {
+  const asignatura = limpio(datos.asignatura);
+  if (!asignatura) throw new Error("Escribe el nombre de la materia.");
+  if (!datos.bloques.length) throw new Error("Agrega al menos un día de clase.");
+
+  const bloques = [...datos.bloques].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  for (let i = 1; i < bloques.length; i++) {
+    const [d, k] = bloques[i], [dp, kp, np] = bloques[i - 1];
+    if (d === dp && k < kp + np) throw new Error(`Dos horas del ${DIAS[d].toLowerCase()} se pisan.`);
+  }
+
+  const todas = grupos.flatMap((g) => g.materias);
+  const c = clave(asignatura);
+  const codasig = todas.find((m) => clave(m.asignatura) === c)?.codasig ?? `M-${c}`;
+  const codhora = Math.min(0, ...todas.map((m) => m.codhora)) - 1;
+
+  return {
+    grupo: normalizar(datos.grupo).replace(RE_ESPACIO, ""),
+    periodo: "",
+    manual: true,
+    materias: [{ codasig, codhora, asignatura, profesor: limpio(datos.profesor), email: "", bloques }],
+  };
 }

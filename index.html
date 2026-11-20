@@ -2,88 +2,106 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Horario UTP</title>
-  <meta name="description" content="Arma tu horario de la UTP sin choques, ordenado según tus preferencias.">
+  <!-- style-src-attr: SVG de Ajustes -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Horario</title>
+  <meta name="description" content="Arma tu horario sin choques, ordenado según tus preferencias.">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#1f5fbf">
+  <meta name="theme-color" content="#f4f4f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/tema.js"></script>
   <script type="module" src="js/main.js"></script>
+  <!-- Evita la cascada de imports -->
+  <link rel="modulepreload" href="js/ui.js">
+  <link rel="modulepreload" href="js/calendario.js">
+  <link rel="modulepreload" href="js/dom.js">
+  <link rel="modulepreload" href="js/agentes.js">
+  <link rel="modulepreload" href="js/ajustes.js">
+  <link rel="modulepreload" href="js/atajos.js">
+  <link rel="modulepreload" href="js/estado.js">
+  <link rel="modulepreload" href="js/modelo.js">
+  <link rel="modulepreload" href="js/entrada.js">
+  <link rel="modulepreload" href="js/solver.js">
+  <link rel="modulepreload" href="js/preferencias.js">
+  <link rel="modulepreload" href="js/periodos.js">
+  <link rel="modulepreload" href="js/bits.js">
 </head>
 <body>
   <header>
-    <h1>Horario UTP</h1>
     <nav aria-label="Pasos">
-      <ol id="pasos">
-        <li><a href="#datos">Datos</a></li>
-        <li><a href="#materias">Materias</a></li>
-        <li><a href="#preferencias">Preferencias</a></li>
-        <li><a href="#opciones">Opciones</a></li>
-        <li><a href="#exportar">Exportar</a></li>
+      <ol id="pasos" class="vidrio">
+        <li class="pildora" aria-hidden="true"></li>
+        <li><a href="#materias" data-atajo="g m" aria-current="step"><span>Materias</span></a></li>
+        <li><a href="#opciones" data-atajo="g h"><span>Horario</span></a></li>
       </ol>
     </nav>
+    <div class="herramientas vidrio">
+      <button type="button" class="fantasma chico" commandfor="dialogo-ajustes" command="show-modal">Ajustes</button>
+    </div>
   </header>
 
   <main>
-    <section id="datos" aria-labelledby="t-datos">
-      <h2 id="t-datos" tabindex="-1">Cargar horarios de grupos</h2>
-      <p>
-        En el portal de Matrícula abre <b>Grupos por Asignatura → Horario del Grupo</b>,
-        selecciona toda la página (<kbd>Ctrl</kbd>+<kbd>A</kbd>), cópiala
-        (<kbd>Ctrl</kbd>+<kbd>C</kbd>) y pégala abajo. Repite con cada grupo que te interese.
-      </p>
-      <label for="pegar">Pegar horario de un grupo</label>
-      <textarea id="pegar" rows="3" placeholder="Pega aquí (Ctrl+V)"></textarea>
-      <p class="fila">
-        <label class="boton secundario">Subir .html o .json
-          <input type="file" id="archivos" accept=".html,.htm,.json" multiple hidden>
-        </label>
-        <button type="button" id="ejemplo" class="secundario">Usar datos de ejemplo</button>
-      </p>
-      <p id="msg-datos" role="status"></p>
-      <h3>Grupos cargados</h3>
-      <ul id="lista-grupos" class="lista"></ul>
-      <p class="acciones"><a href="#materias" class="boton">Continuar</a></p>
-    </section>
-
-    <section id="materias" aria-labelledby="t-materias" hidden>
-      <h2 id="t-materias" tabindex="-1">Materias a inscribir</h2>
+    <section id="materias" aria-labelledby="t-materias">
+      <div class="cabeza">
+        <h2 id="t-materias" tabindex="-1">Materias</h2>
+        <p class="acciones vidrio-movil"><a href="#opciones" class="boton" data-atajo="Mod+Enter" data-atajo-texto="Paso siguiente">Ver horario</a></p>
+      </div>
+      <div id="grupos" class="fila grupos"></div>
+      <div id="entrada">
+        <div id="agregar" class="tarjeta agregar">
+          <label for="pegar" class="titulo">Pega el horario de tu grupo</label>
+          <textarea id="pegar" rows="3" data-atajo="/" data-atajo-texto="Ir al campo para pegar"
+            placeholder="Matrícula → Grupos por Asignatura → Horario del Grupo. Ctrl+A, Ctrl+C y pega aquí."></textarea>
+          <p class="fila">
+            <label class="boton secundario">Subir archivo
+              <input type="file" id="archivos" accept=".html,.htm,.json" multiple hidden>
+            </label>
+            <button type="button" id="ejemplo" class="secundario">Ejemplo</button>
+          </p>
+          <p id="msg-datos" role="status"></p>
+        </div>
+        <div id="a-mano" class="tarjeta agregar"></div>
+      </div>
       <div id="contenido-materias"></div>
-      <p class="acciones">
-        <a href="#datos" class="boton secundario">Atrás</a>
-        <a href="#preferencias" class="boton">Continuar</a>
-      </p>
-    </section>
-
-    <section id="preferencias" aria-labelledby="t-preferencias" hidden>
-      <h2 id="t-preferencias" tabindex="-1">Preferencias <small>(opcional)</small></h2>
-      <div id="contenido-preferencias"></div>
-      <p class="acciones">
-        <a href="#materias" class="boton secundario">Atrás</a>
-        <a href="#opciones" class="boton">Ver opciones</a>
-      </p>
     </section>
 
     <section id="opciones" aria-labelledby="t-opciones" hidden>
-      <h2 id="t-opciones" tabindex="-1">Opciones</h2>
+      <div class="cabeza">
+        <h2 id="t-opciones" tabindex="-1">Horario</h2>
+        <p class="acciones vidrio-movil"><a href="#materias" class="boton secundario">Atrás</a></p>
+      </div>
       <div id="contenido-opciones"></div>
-      <p class="acciones">
-        <a href="#preferencias" class="boton secundario">Atrás</a>
-        <a href="#exportar" class="boton">Exportar esta opción</a>
-      </p>
     </section>
 
-    <section id="exportar" aria-labelledby="t-exportar" hidden>
-      <h2 id="t-exportar" tabindex="-1">Exportar</h2>
-      <div id="contenido-exportar"></div>
-      <p class="acciones"><a href="#opciones" class="boton secundario">Atrás</a></p>
-    </section>
   </main>
 
-  <footer>
-    <p>Todo corre en tu navegador: los horarios que cargas no salen de tu equipo.</p>
-  </footer>
+  <!-- autofocus en el diálogo: en celular abría desplazado -->
+  <dialog id="dialogo-ajustes" class="dialogo" aria-labelledby="ajustes-titulo" closedby="any" autofocus>
+    <div class="dialogo-agarre" aria-hidden="true"></div>
+    <h2 id="ajustes-titulo">Ajustes</h2>
+    <div id="contenido-ajustes"></div>
+    <form method="dialog" class="acciones"><button class="secundario">Listo</button></form>
+  </dialog>
+
+  <dialog id="dialogo-borrar" class="dialogo" role="alertdialog" aria-labelledby="borrar-titulo" closedby="any">
+    <div class="dialogo-agarre" aria-hidden="true"></div>
+    <h2 id="borrar-titulo">¿Borrar horarios y preferencias?</h2>
+    <p>No se puede deshacer.</p>
+    <form method="dialog" class="acciones">
+      <button class="secundario" value="cancelar" autofocus>Cancelar</button>
+      <button class="peligro" value="borrar">Borrar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dialogo-atajos" class="dialogo" aria-labelledby="atajos-titulo" closedby="any">
+    <h2 id="atajos-titulo">Atajos de teclado</h2>
+    <div id="contenido-atajos"></div>
+    <form method="dialog" class="acciones"><button class="secundario" autofocus>Cerrar</button></form>
+  </dialog>
+
+  <div id="tostada" class="tostada" role="status" aria-live="polite"></div>
 </body>
 </html>

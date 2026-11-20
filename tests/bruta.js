@@ -1,21 +1,23 @@
-// Referencia para los tests: enumera todas las combinaciones sin choques y
-// calcula la penalidad por definición (minutos, sets), sin máscaras ni poda.
+// Referencia: fuerza bruta, sin máscaras ni poda.
 
-import { finMin, inicioMin } from "../js/periodos.js";
-import { PESOS, penalSeccion } from "../js/preferencias.js";
+import { finMin, franjaDe, inicioMin } from "../js/periodos.js";
+import { PESOS } from "../js/preferencias.js";
 
 /**
  * @param {import("../js/modelo.js").Seccion[]} secciones
  * @param {string[]} requeridas
  * @param {import("../js/preferencias.js").Prefs} prefs
- * @returns {number[]} penalidades de todas las combinaciones, ordenadas
+ * @returns {number[]}
  */
 export function bruta(secciones, requeridas, prefs) {
-  const pesos = { ...PESOS, ...prefs.pesos };
   const excluidas = new Set(prefs.excluidas ?? []);
   const fijas = new Set(prefs.fijas ?? []);
+  const evitados = new Set(prefs.evitados ?? []);
   const listas = requeridas.map((c) => {
-    const l = secciones.filter((s) => s.codasig === c && !excluidas.has(s.codhora));
+    const enTurno = (s) => !prefs.soloTurno || !prefs.horario || fijas.has(s.codhora) || s.bloques.every(([, k]) => franjaDe(k) === prefs.horario);
+    const solo = prefs.solo?.[c] ?? [];
+    const quiero = (s) => fijas.has(s.codhora) || !solo.length || solo.includes(s.profesor);
+    const l = secciones.filter((s) => s.codasig === c && !excluidas.has(s.codhora) && !evitados.has(s.profesor) && enTurno(s) && quiero(s));
     const f = l.filter((s) => fijas.has(s.codhora));
     return f.length ? f : l;
   });
@@ -24,16 +26,14 @@ export function bruta(secciones, requeridas, prefs) {
   const out = [];
   const rec = (i, combo) => {
     if (i === listas.length) {
-      let p = combo.reduce((t, s) => t + penalSeccion(s, prefs.materias?.[s.codasig] ?? {}, pesos), 0);
+      const fuera = combo.filter((s) => prefs.horario && s.bloques.some(([, k]) => franjaDe(k) !== prefs.horario));
+      let p = fuera.length * PESOS.horario;
       const dias = new Set(combo.flatMap((s) => s.bloques.map((b) => b[0])));
-      p += Math.max(0, dias.size - (prefs.diasMax ?? Infinity)) * pesos.dias;
-      if (prefs.unGrupo) p += Math.max(0, new Set(combo.map((s) => s.grupo)).size - 1) * pesos.grupo;
-      if (prefs.evitarHuecos) {
-        for (const d of dias) {
-          const ps = combo.flatMap((s) => s.bloques.filter((b) => b[0] === d)
-            .flatMap(([, k, n]) => Array.from({ length: n }, (_, j) => k + j)));
-          p += (Math.max(...ps) - Math.min(...ps) + 1 - new Set(ps).size) * pesos.hueco;
-        }
+      if (prefs.menosDias) p += (dias.size - 1) * PESOS.dias;
+      for (const d of dias) {
+        const ps = combo.flatMap((s) => s.bloques.filter((b) => b[0] === d)
+          .flatMap(([, k, n]) => Array.from({ length: n }, (_, j) => k + j)));
+        p += (Math.max(...ps) - Math.min(...ps) + 1 - new Set(ps).size) * PESOS.hueco;
       }
       out.push(p);
       return;
@@ -45,8 +45,6 @@ export function bruta(secciones, requeridas, prefs) {
 }
 
 /**
- * Datos sintéticos reproducibles: G grupos que dan M materias cada uno, con
- * dos bloques al azar por materia.
  * @param {number} M @param {number} G @param {number} semilla
  */
 export function sinteticos(M, G, semilla) {
@@ -67,8 +65,7 @@ export function sinteticos(M, G, semilla) {
 }
 
 /**
- * Datos parecidos a los de la UTP: cada grupo tiene un turno (mañana k0–6,
- * tarde k7–11, noche k13–19) y sus materias encajan sin choques dentro de él.
+ * Como la UTP: un turno por grupo, sin choques internos.
  * @param {number} M @param {number} G @param {number} semilla
  */
 export function sinteticosUtp(M, G, semilla) {

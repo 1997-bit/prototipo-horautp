@@ -1,63 +1,50 @@
 // @ts-check
-// Preferencias y penalización.
-//
-// La penalización de una combinación es la suma de:
-//   - por sección: horario fuera de la franja pedida, profesor distinto
-//   - global: días por encima de diasMax, huecos entre clases, grupos extra
+// Preferencias: lo descartado sale de la búsqueda; el resto suma penalidad.
 
-import { franjaDe, normalizar } from "./periodos.js";
+import { huecos } from "./bits.js";
+import { franjaDe } from "./periodos.js";
 
 /**
- * @typedef {{horario?: string, profesor?: string}} PrefMateria
- * @typedef {{materias?: Record<string, PrefMateria>, diasMax?: number | null,
- *            evitarHuecos?: boolean, unGrupo?: boolean,
- *            fijas?: number[], excluidas?: number[],
- *            pesos?: Partial<typeof PESOS>}} Prefs
- *   fijas / excluidas: codhora. Si una materia tiene una sección fija, solo
- *   se considera esa.
+ * @typedef {{horario?: string, soloTurno?: boolean, menosDias?: boolean,
+ *            solo?: Record<string, string[]>, evitados?: string[],
+ *            fijas?: number[], excluidas?: number[]}} Prefs
  * @typedef {import("./modelo.js").Seccion} Seccion
  */
 
 export const PESOS = {
-  horario: 10, // sección fuera de la franja preferida
-  profesor: 15, // profesor distinto al preferido
-  dias: 20, // cada día por encima de diasMax
-  hueco: 5, // cada período libre entre dos clases del mismo día
-  grupo: 10, // cada grupo distinto después del primero
+  horario: 10,
+  dias: 20,
+  hueco: 5,
 };
 
-/**
- * Cumple si todos sus bloques arrancan en la franja pedida.
- * @param {Seccion} s @param {string | undefined} franja
- */
+/** @param {Seccion} s @param {string | undefined} franja */
 export function cumpleHorario(s, franja) {
   if (!franja) return true;
   return s.bloques.every(([, k]) => franjaDe(k) === franja);
 }
 
-/** @param {Seccion} s @param {string | undefined} profesor */
-export function cumpleProfesor(s, profesor) {
-  if (!profesor) return true;
-  return normalizar(s.profesor).includes(normalizar(profesor));
-}
+/** @param {Seccion} s @param {Prefs} prefs */
+export const penalSeccion = (s, prefs) => (cumpleHorario(s, prefs.horario) ? 0 : PESOS.horario);
 
-/**
- * Para la tabla de validación: null si no hay preferencia.
- * @param {Seccion} s @param {PrefMateria} [pm]
- */
-export function estadoSeccion(s, pm = {}) {
-  return {
-    horario: pm.horario ? cumpleHorario(s, pm.horario) : null,
-    profesor: pm.profesor ? cumpleProfesor(s, pm.profesor) : null,
-  };
-}
-
-/**
- * @param {Seccion} s @param {PrefMateria} pm @param {typeof PESOS} pesos
- */
-export function penalSeccion(s, pm, pesos) {
+/** La misma que calcula el solver. @param {Seccion[]} secciones @param {Prefs} prefs */
+export function penalidad(secciones, prefs) {
+  const ocupado = [0, 0, 0, 0, 0, 0, 0];
   let p = 0;
-  if (!cumpleHorario(s, pm.horario)) p += pesos.horario;
-  if (!cumpleProfesor(s, pm.profesor)) p += pesos.profesor;
-  return p;
+  for (const s of secciones) {
+    p += penalSeccion(s, prefs);
+    s.masks.forEach((m, d) => { ocupado[d] |= m; });
+  }
+  const nDias = ocupado.filter(Boolean).length;
+  const nHuecos = ocupado.reduce((t, m) => t + huecos(m), 0);
+  if (prefs.menosDias && nDias) p += (nDias - 1) * PESOS.dias;
+  return p + nHuecos * PESOS.hueco;
+}
+
+/** @param {Seccion} s @param {Prefs} prefs */
+export function descartada(s, prefs) {
+  if (prefs.excluidas?.includes(s.codhora) || prefs.evitados?.includes(s.profesor)) return true;
+  if (prefs.fijas?.includes(s.codhora)) return false;
+  const solo = prefs.solo?.[s.codasig];
+  if (solo?.length && !solo.includes(s.profesor)) return true;
+  return !!prefs.soloTurno && !cumpleHorario(s, prefs.horario);
 }

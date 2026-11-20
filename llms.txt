@@ -1,0 +1,25 @@
+# Horario
+
+> Arma el horario de la UTP (Panamá) sin choques, ordenado según las preferencias del estudiante. Todo corre en el navegador; nada se envía a ningún servidor.
+
+## Cómo la usa un agente
+
+Si el navegador tiene WebMCP (`document.modelContext`), la página registra estas herramientas. Si no, están en `window.horautp.<nombre>(entrada)` para agentes que ejecutan JS en la página.
+
+- `cargar_horario({html} | {json})`: HTML de la página del portal de Matrícula *Grupos por Asignatura → Horario del Grupo*, o JSON de grupos. Se pueden cargar varios grupos.
+- `ver_estado()`: grupos, materias (con sus secciones: `codhora`, grupo, profesor, clases) y preferencias.
+- `elegir_materias({codasig: [...]})`: qué materias se inscriben.
+- `ajustar_preferencias({turno, solo_turno, menos_dias, profesores_solo, profesores_evitados, fijas, excluidas})`: cada campo reemplaza al anterior.
+- `ver_horarios({cuantas})`: mejores combinaciones. Por materia: `c_hora` (lo que se escribe en *Matrícula del Período*) y `plan_b` (C.HORA que la reemplazan si el grupo se llena).
+- `mostrar_horario({numero})`: muestra esa opción en pantalla.
+
+Flujo típico: `cargar_horario` → `elegir_materias` → `ajustar_preferencias` → `ver_horarios` → `mostrar_horario`.
+
+## Sin herramientas
+
+1. En `#materias`, escribir o pegar en el campo "Pega el horario de tu grupo" el HTML de la página del portal o un JSON de grupos (se carga solo), o usar el formulario "O agrégala a mano". Marcar las materias a inscribir.
+2. En `#opciones`, los filtros (Turno, Solo ese turno, Ir menos días) reordenan; en la tabla, Fijar / Excluir cada sección y elegir profesor.
+
+## Datos
+
+Períodos de 45 min cada 50 min desde las 7:00: el período `k` empieza a las 7:00 + 50k min. Bloque = `[día 0=lunes, k, n períodos, "C"|"L"|"CL", aula]`. Turnos: mañana k ≤ 6, tarde 7–11, noche ≥ 12. Ejemplo de JSON: [data/ejemplo.json](data/ejemplo.json).

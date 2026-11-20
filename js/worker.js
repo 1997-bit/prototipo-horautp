@@ -1,5 +1,5 @@
 // @ts-check
-// Corre el solver fuera del hilo principal para que la página no se congele.
+// Solver fuera del hilo principal.
 
 import { resolver } from "./solver.js";
 

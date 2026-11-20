@@ -1,5 +1,4 @@
 // @ts-check
-// Convierte el CSV del prototipo (data/horarios.csv) al formato de grupos.
 // Uso: node tools/csv-a-json.js data/horarios.csv > data/ejemplo.json
 
 import { readFileSync } from "node:fs";
@@ -8,7 +7,7 @@ import { diaIndex, minDesdeTexto, periodoDesdeMin, periodosDesdeDuracion } from 
 /** @type {Record<string, string>} */
 const TIPO = { Clase: "C", Lab: "L", "Clase+Lab": "CL" };
 
-/** CSV con campos entre comillas. @param {string} texto */
+/** @param {string} texto */
 function leerCsv(texto) {
   const filas = [];
   for (const linea of texto.split(/\r?\n/)) {
@@ -54,7 +53,7 @@ for (const g of grupos.values()) {
   for (const m of g.materias) m.bloques.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }
 
-// Una materia por línea: legible y con diffs chicos.
+// Una materia por línea.
 const lineas = [...grupos.values()].map((g) =>
   `  {"grupo": ${JSON.stringify(g.grupo)}, "periodo": ${JSON.stringify(g.periodo)}, "materias": [\n` +
   g.materias.map((m) => `    ${JSON.stringify(m)}`).join(",\n") +

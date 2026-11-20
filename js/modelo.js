@@ -1,26 +1,20 @@
 // @ts-check
-// Grupos (tal como salen del portal) → secciones con máscaras por día.
-//
-// Una sección es una materia de un grupo y se identifica por su codhora.
-// Clase y Lab de la misma materia comparten codhora, así que siempre se
-// eligen juntos.
+// Grupos → secciones. Clase y Lab comparten codhora.
 
 import { bitsPeriodos } from "./bits.js";
 
 /**
- * [dia 0-6, k período inicial, n períodos, tipo "C" | "L" | "CL", aula]
+ * [dia, k, n, tipo, aula]
  * @typedef {[number, number, number, string, string]} Bloque
  *
  * @typedef {{codasig: string, codhora: number, asignatura: string,
  *            profesor: string, email: string, bloques: Bloque[]}} Materia
- * @typedef {{grupo: string, periodo: string, sede?: string, materias: Materia[]}} Grupo
+ * @typedef {{grupo: string, periodo: string, sede?: string, manual?: boolean, materias: Materia[]}} Grupo
  *
  * @typedef {{id: number, grupo: string, codasig: string, codhora: number,
  *            asignatura: string, profesor: string, email: string,
  *            bloques: Bloque[], masks: number[], usos: number[], dias: number}} Seccion
- *   masks: períodos ocupados por día (7 entradas).
- *   usos: solo los días con clase, aplanado [d, mask, d, mask…]; el solver
- *         recorre esto en lugar de los 7 días.
+ *   usos: [d, mask, …] solo días con clase.
  */
 
 /** @type {Record<string, string>} */
@@ -42,7 +36,7 @@ export function construirSecciones(grupos) {
       for (const [d, k, n] of m.bloques) masks[d] |= bitsPeriodos(k, n);
       let dias = 0;
       masks.forEach((mk, d) => { if (mk) dias |= 1 << d; });
-      // Si el mismo grupo se cargó dos veces, gana el último.
+      // Duplicado: gana el último.
       porCodhora.set(m.codhora, {
         id: 0,
         grupo: g.grupo,
@@ -63,10 +57,7 @@ export function construirSecciones(grupos) {
   return secciones;
 }
 
-/**
- * Materias disponibles, con cuántas secciones tiene cada una.
- * @param {Seccion[]} secciones
- */
+/** @param {Seccion[]} secciones */
 export function listarMaterias(secciones) {
   /** @type {Map<string, {codasig: string, asignatura: string, secciones: number}>} */
   const m = new Map();
@@ -82,4 +73,17 @@ export function listarMaterias(secciones) {
 export function chocan(a, b) {
   for (let d = 0; d < 7; d++) if (a.masks[d] & b.masks[d]) return true;
   return false;
+}
+
+const RE_PALABRAS = /[\s.]+/;
+const RE_NUMERO = /^([IVX]+|\d+)$/;
+const CONECTORES = new Set(["DE", "DEL", "LA", "LAS", "EL", "LOS", "Y", "E", "A", "AL", "EN", "PARA", "CON", "POR"]);
+
+/** "REDES DE COMPUTADORAS" → "RC", "DES. SOFT. VIII" → "DS VIII". @param {string} asignatura */
+export function sigla(asignatura) {
+  const palabras = asignatura.toUpperCase().split(RE_PALABRAS).filter(Boolean);
+  const num = palabras.length > 1 && RE_NUMERO.test(palabras.at(-1) ?? "") ? palabras.pop() : "";
+  const utiles = palabras.filter((p) => !CONECTORES.has(p));
+  const base = utiles.length > 1 ? utiles.slice(0, 4).map((p) => p[0]).join("") : (utiles[0] ?? palabras[0] ?? "").slice(0, 4);
+  return num ? `${base} ${num}` : base;
 }

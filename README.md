@@ -1,31 +1,48 @@
-# Horario UTP
+# Horario
 
-Web estática que arma tu horario de la UTP sin choques, ordenado según
+Web estática que arma tu horario sin choques, ordenado según
 tus preferencias. HTML, CSS y JS vanilla: sin build, sin dependencias,
 todo corre en el navegador.
 
 La versión anterior (TUI en Python con OR-Tools) está en [`legacy/`](legacy/).
 
-## Uso
+## Iniciar el servidor
+
+Hace falta servirlo por HTTP: abrir `index.html` con doble clic no funciona
+(los ES modules y el Web Worker no cargan desde `file://`).
+
+Desde la raíz del repo:
 
 ```bash
-python3 -m http.server     # o cualquier servidor estático
-# abrir http://localhost:8000
+cd prototipo-horautp
+python3 -m http.server 8000
 ```
 
-Hace falta servirlo por HTTP (los ES modules no cargan desde `file://`).
-Para publicarlo basta con GitHub Pages apuntando a la raíz del repo.
+Abrir <http://localhost:8000>. Para detenerlo, `Ctrl+C`.
 
-1. **Datos:** en el portal de Matrícula abre *Grupos por Asignatura →
-   Horario del Grupo*, copia toda la página y pégala. También acepta el
-   `.html` guardado o un `.json` de grupos.
-2. **Materias** a inscribir.
-3. **Preferencias:** franja y profesor por materia, máximo de días, evitar
-   huecos y preferir pocos grupos.
-4. **Opciones:** las 50 mejores combinaciones, de menor a mayor penalidad.
-   Se puede fijar o excluir cada sección; se marca qué cambia respecto a la
-   opción 1. Si no hay solución, dice qué materias chocan siempre.
-5. **Exportar:** `.ics` (Google Calendar, Outlook), CSV o imprimir.
+Cualquier servidor estático sirve; alternativas:
+
+```bash
+npx serve -l 8000 .        # Node
+php -S localhost:8000      # PHP
+```
+
+Si el puerto 8000 está ocupado, usa otro (`python3 -m http.server 8080`) y
+abre esa URL. Para publicarlo basta con GitHub Pages apuntando a la raíz
+del repo.
+
+## Uso
+
+1. **Materias:** en el portal de Matrícula abre *Grupos por Asignatura →
+   Horario del Grupo*, copia toda la página y pégala (o sube el `.html`
+   o un `.json`). Sus materias quedan marcadas; desmarca las que no vas a inscribir.
+2. **Horario:** las 50 mejores combinaciones sin choques. Arriba, filtros de
+   turno, días y horas libres que reordenan al toque. En la tabla se fija o
+   excluye cada sección, y al tocar el profesor se prefiere o evita a otro.
+   Si no hay solución, dice qué materias chocan siempre.
+3. **Inscribirse:** cada materia muestra su grupo y su C.HORA, lo que se
+   escribe en *Matrícula del Período*. Bajo el C.HORA va el plan B (↳): el que
+   la reemplaza sin mover nada más si el grupo se llena.
 
 Funciona sin conexión después de la primera visita (service worker
 network-first: con internet siempre usa la versión más nueva).
@@ -38,13 +55,15 @@ network-first: con internet siempre usa la versión más nueva).
 | `js/bits.js` | popcount y huecos sobre máscaras |
 | `js/modelo.js` | grupos → secciones con máscaras por día |
 | `js/preferencias.js` | pesos y penalización por sección |
-| `js/solver.js` | búsqueda con poda, top-K exacto |
+| `js/solver.js` | búsqueda con poda, top-K exacto, plan B por sección |
 | `js/worker.js` | corre el solver fuera del hilo principal |
 | `js/entrada.js` | tabla HTML del portal → grupo |
-| `js/exportar.js` | `.ics` y CSV |
 | `js/estado.js` | localStorage |
+| `js/ajustes.js` | vista del horario en el celular (compacta, lateral o lista) |
+| `js/atajos.js` | atajos de teclado y su ayuda (`?`) |
 | `js/ui.js`, `js/main.js` | pantallas y navegación por hash |
-| `sw.js`, `manifest.webmanifest`, `icon.svg` | uso sin conexión / instalable |
+| `js/agentes.js` | herramientas WebMCP para el agente del usuario (ver `llms.txt`) |
+| `sw.js`, `manifest.webmanifest` | uso sin conexión / instalable |
 | `tools/csv-a-json.js` | `data/horarios.csv` → `data/ejemplo.json` |
 
 ## Datos

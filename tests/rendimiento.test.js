@@ -5,18 +5,14 @@ import { construirSecciones } from "../js/modelo.js";
 import { resolver } from "../js/solver.js";
 import { sinteticos, sinteticosUtp } from "./bruta.js";
 
-// Casos que con la primera versión del solver tardaban más de 20 s.
-// Tienen que terminar de forma exacta (sin llegar al límite de tiempo).
+// Antes tardaban >20 s; deben terminar sin llegar al límite.
 const requeridas = (M) => Array.from({ length: M }, (_, m) => `M${m}`);
-const todas = (M) => ({
-  diasMax: 4, evitarHuecos: true, unGrupo: true,
-  materias: Object.fromEntries(requeridas(M).map((c, m) => [c, { horario: ["manana", "tarde", "noche"][m % 3], profesor: "P1" }])),
-});
+const todas = { menosDias: true, horario: "tarde" };
 
 for (const [nombre, datos, M, G, prefs] of [
-  ["azar 7×20, huecos", sinteticos, 7, 20, { evitarHuecos: true }],
-  ["UTP 7×20, todas las preferencias", sinteticosUtp, 7, 20, todas(7)],
-  ["UTP 8×30, huecos", sinteticosUtp, 8, 30, { evitarHuecos: true }],
+  ["azar 7×20, huecos", sinteticos, 7, 20, {}],
+  ["UTP 7×20, todas las preferencias", sinteticosUtp, 7, 20, todas],
+  ["UTP 8×30, huecos", sinteticosUtp, 8, 30, {}],
 ]) {
   test(`rendimiento: ${nombre}`, () => {
     const secciones = construirSecciones(datos(M, G, nombre.startsWith("azar") ? 1 : 7));

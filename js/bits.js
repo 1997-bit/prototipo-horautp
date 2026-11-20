@@ -1,20 +1,14 @@
 // @ts-check
-// Operaciones sobre máscaras de 32 bits (un bit por período o por día).
+// Máscaras de 32 bits.
 
-/** @param {number} x */
+/** Popcount (SWAR). @param {number} x */
 export function popcount(x) {
-  let c = 0;
-  while (x) {
-    x &= x - 1;
-    c++;
-  }
-  return c;
+  x -= (x >>> 1) & 0x55555555;
+  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  return Math.imul((x + (x >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24;
 }
 
-/**
- * Bits de los períodos libres entre la primera y la última clase de un día.
- * @param {number} mask
- */
+/** Huecos entre la primera y la última clase. @param {number} mask */
 export function mascaraHuecos(mask) {
   if (!mask) return 0;
   const primero = mask & -mask;
