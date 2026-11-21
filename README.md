@@ -51,9 +51,10 @@ network-first: con internet siempre usa la versión más nueva).
 
 | Archivo | Qué hace |
 |---|---|
-| `js/periodos.js` | grilla de períodos, franjas, normalización de texto |
-| `js/bits.js` | popcount y huecos sobre máscaras |
-| `js/modelo.js` | grupos → secciones con máscaras por día |
+| `js/periodos.js` | horas del portal, franjas, normalización de texto |
+| `js/bits.js` | celdas de 10 min: marcar, huecos, popcount |
+| `js/modelo.js` | grupos → secciones (con subgrupos) y máscaras por día |
+| `js/calendario.js` | grilla semanal y vista por día |
 | `js/preferencias.js` | pesos y penalización por sección |
 | `js/solver.js` | búsqueda con poda, top-K exacto, plan B por sección |
 | `js/worker.js` | corre el solver fuera del hilo principal |
@@ -61,24 +62,30 @@ network-first: con internet siempre usa la versión más nueva).
 | `js/estado.js` | localStorage |
 | `js/ajustes.js` | vista del horario en el celular (compacta, lateral o lista) |
 | `js/atajos.js` | atajos de teclado y su ayuda (`?`) |
-| `js/ui.js`, `js/main.js` | pantallas y navegación por hash |
+| `js/main.js`, `js/ui.js` | arranque, navegación por hash y estado de la app |
+| `js/materias.js`, `js/manual.js` | paso 1: cargar grupos, materia a mano, elegir materias |
+| `js/horario.js`, `js/carrusel.js`, `js/filtros.js` | paso 2: opciones, carrusel y filtros |
+| `js/busqueda.js` | solver en el hilo principal o en el Worker |
+| `js/elecciones.js` | fijar, excluir y profesores (lo quiero / no) |
+| `js/deshacer.js` | aviso con "Deshacer" |
+| `js/dom.js` | `h()`, `$`, `llenar` y localStorage sin errores en modo privado |
 | `js/agentes.js` | herramientas WebMCP para el agente del usuario (ver `llms.txt`) |
 | `sw.js`, `manifest.webmanifest` | uso sin conexión / instalable |
 | `tools/csv-a-json.js` | `data/horarios.csv` → `data/ejemplo.json` |
 
 ## Datos
 
-### Grilla de períodos
+### Horas
 
-Todas las clases de la UTP caen en períodos de 45 min que arrancan cada
-50 min desde las 7:00:
+La UTP usa dos rejillas: períodos de 45 min cada 50 min desde las 7:00
+(7:00–7:45, 7:50–8:35…) y, en algunos posgrados, horas de 55 min
+(6:00–6:55pm, 7:00–7:55pm…). Un bloque guarda inicio y fin en minutos desde
+las 0:00: `[dia, inicio, fin, tipo, aula, subgrupo?]`. Las filas seguidas de
+la misma clase (con ≤ 10 min de recreo) se unen en un bloque.
 
-$$\text{inicio}(k) = 7{:}00 + 50k \qquad \text{fin} = \text{inicio} + 45$$
-
-Un bloque son $n$ períodos seguidos (dura $50n - 5$ min). Por eso un bloque
-se guarda como `[dia, k, n, tipo, aula]` y no hacen falta horas en ningún
-cálculo. Franjas: mañana $k \le 6$ (7:00–12:45), tarde $7 \le k \le 11$
-(12:50–4:55), noche $k \ge 12$.
+Franjas por hora de inicio: mañana antes de 12:50, tarde antes de 5:00pm,
+noche después. Los bloques del formato anterior (`[dia, k, n, …]` en
+períodos) se convierten solos al cargar.
 
 ### Formato de un grupo
 
@@ -86,38 +93,49 @@ cálculo. Franjas: mañana $k \le 6$ (7:00–12:45), tarde $7 \le k \le 11$
 {"grupo": "1GS232", "periodo": "II-2026", "sede": "PANAMA", "materias": [
   {"codasig": "1481", "codhora": 2682, "asignatura": "SISTEMAS OPERATIVOS",
    "profesor": "ZURITA, ARMANDO", "email": "...",
-   "bloques": [[0, 13, 2, "L", "3-401"], [1, 15, 2, "C", "3-301"]]}
+   "bloques": [[0, 1070, 1165, "L", "3-401"], [1, 1170, 1265, "C", "3-301"]]}
 ]}
 ```
 
 Una **sección** es una materia de un grupo y se identifica por `codhora`.
 Clase y Lab de la misma materia comparten `codhora`, así que van juntos.
 
+**Subgrupos.** En el portal, `MÉTODOS NUMÉRIC(A )` y `(B )` son mitades del
+grupo con laboratorios a horas distintas. Son del grupo entero: mientras B
+está en una materia, A puede estar en otra a la misma hora. Cada materia
+con subgrupos da una sección por letra del grupo (teoría + lo de esa letra),
+y dos secciones del mismo grupo con letras distintas chocan.
+
+**Mismo grupo.** Lo que se pisa en el horario oficial de un grupo (módulos
+de maestría a la misma hora) no cuenta como choque entre sus secciones.
+
 ### Códigos
 
 - `grupo` `1GS232` = sede (1 Panamá, 4 Veraguas) · carrera (GS) · turno
-  (1 diurno, 2 nocturno) · año · número de grupo.
+  (1 diurno, 2 nocturno) · año · número de grupo. También hay `11D234`,
+  `1EG1010` o `V1R122`.
 - `codhora` es correlativo: cada grupo recibe un bloque seguido, con las
   materias siempre en el mismo orden del plan.
 
 ## Modelo
 
-Cada sección tiene una máscara de 32 bits por día (un bit por período).
-Dos secciones chocan si para algún día `a[d] & b[d] ≠ 0`.
+Cada día se parte en celdas de 10 min desde las 7:00 (3 palabras de 32
+bits, hasta las 11:00pm). Los inicios de las dos rejillas caen en múltiplos
+de 10 y el fin se redondea hacia arriba, así que 7:45 y 7:50 o 6:55 y 7:00
+quedan pegadas, sin hueco ni choque. Dos secciones chocan si alguna palabra
+da `a[i] & b[i] ≠ 0` (con las reglas de subgrupos y mismo grupo de arriba).
 
 Restricciones duras: exactamente una sección por materia y sin choques.
 
 Penalidad de una combinación $c$:
 
-$$P(c) = \sum_{s \in c} \text{pen}(s) + w_d \max(0, |D| - d_{\max}) + w_h \cdot \text{huecos} + w_g \max(0, |G| - 1)$$
+$$P(c) = \sum_{s \in c} \text{pen}(s) + w_d \max(0, |D| - 1)\,[\text{menos días}] + w_h \cdot \text{celdas libres}$$
 
 | Peso | Valor | Penaliza |
 |---|---|---|
-| horario | 10 | sección fuera de la franja pedida |
-| profesor | 15 | profesor distinto al pedido |
-| dias | 20 | cada día por encima del máximo |
-| hueco | 5 | cada período libre entre clases del mismo día (si se activa) |
-| grupo | 10 | cada grupo distinto después del primero (si se activa) |
+| horario | 10 | sección fuera del turno pedido |
+| dias | 20 | cada día después del primero (con "Ir menos días") |
+| hueco | 1 | cada celda de 10 min libre entre clases del mismo día (un período = 5) |
 
 ### Búsqueda
 
@@ -129,8 +147,7 @@ nodo revisa, para cada materia pendiente, qué secciones todavía caben
 - se ramifica primero por la materia con menos secciones que caben;
 - la cota suma lo mínimo que todavía puede costar cada componente:
   la mejor sección que cabe en cada materia pendiente; los días actuales
-  más los que alguna materia obliga a agregar; un grupo más si alguna
-  materia no cabe en ningún grupo ya usado; y los huecos actuales que
+  más los que alguna materia obliga a agregar; y los huecos actuales que
   ninguna sección pendiente puede llenar.
 
 Si la cota no mejora a la peor del top-K, la rama se poda. El resultado es

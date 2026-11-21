@@ -3,7 +3,7 @@
 
 import { iniciarUnaTecla, ponerUnaTecla, unaTecla } from "./atajos.js";
 import { usar24 } from "./periodos.js";
-import { h } from "./dom.js";
+import { guardarLocal, h, leerLocal, marcado } from "./dom.js";
 
 const raiz = document.documentElement;
 
@@ -14,9 +14,18 @@ const VISTAS = [
   ["lista", "Lista", "Las clases de cada día, una debajo de otra."],
 ];
 
-/** @param {number} x @param {number} y @param {number} w @param {number} alto @param {number | null} [tono] sin tono: gris */
-const r = (x, y, w, alto, tono) =>
-  `<rect x="${x}" y="${y}" width="${w}" height="${alto}" rx="1.5"${tono == null ? ' class="g"' : ` style="--h:${tono}"`}/>`;
+/**
+ * @param {number} x @param {number} y @param {number} w @param {number} alto
+ * @param {number | null} [tono] sin tono: gris
+ */
+const r = (x, y, w, alto, tono) => {
+  const color = tono == null ? ' class="g"' : ` style="--h:${tono}"`;
+  return `<rect x="${x}" y="${y}" width="${w}" height="${alto}" rx="1.5"${color}/>`;
+};
+
+/** @param {number} y @param {number} tono */
+const filaLista = (y, tono) =>
+  `<rect x="2" y="${y}" width="80" height="8" rx="2" class="fila"/>${r(4, y + 2, 2.5, 4, tono)}${r(9, y + 3, 30, 2)}`;
 
 /** @type {Record<string, string>} */
 const DIBUJOS = {
@@ -33,9 +42,9 @@ const DIBUJOS = {
       ...[[0, 0, 2, 25], [1, 1, 1, 250], [2, 0, 1, 150], [0, 2, 1, 300], [1, 2, 2, 25], [2, 2, 1, 250]]
         .map(([d, f, n, t]) => r(13 + d * 27, 8 + f * 15.5, 24, n * 15.5 - 2, t)),
     ].join("")}</g>`,
-  lista: [[2, null], [8, 25], [18, 250], [30, null], [36, 150], [46, 300]]
-    .map(([y, t]) => t == null ? r(2, y, 14, 2.5)
-      : `<rect x="2" y="${y}" width="80" height="8" rx="2" class="fila"/>${r(4, y + 2, 2.5, 4, t)}${r(9, y + 3, 30, 2)}`)
+  lista: /** @type {[number, number | null][]} y, tono; sin tono: título del día */ (
+    [[2, null], [8, 25], [18, 250], [30, null], [36, 150], [46, 300]])
+    .map(([y, t]) => t == null ? r(2, y, 14, 2.5) : filaLista(y, t))
     .join(""),
 };
 
@@ -49,10 +58,16 @@ const ventana = (fondo, tarjeta, linea, luz) => `<rect width="84" height="56" st
 const CLARO = ventana("#f4f4f4", "#fff", "#d6d6d6", 90);
 const OSCURO = ventana("#000", "#161616", "#3a3a3a", 35);
 
+/** Barra del navegador; "sistema" deja la del HTML. @type {Record<string, string>} */
+const COLOR_BARRA = { claro: "#f4f4f4", oscuro: "#000000" };
+
 /** @param {string} a @param {string} b */
 const horas = (a, b) => `<text x="42" y="24" class="t">${a}</text><text x="42" y="44" class="t">${b}</text>`;
 
-/** @typedef {{ clave: string, dato: string, leyenda: string, aplicar?: (v: string) => void, opciones: [string, string, string, string][] }} Ajuste */
+/**
+ * @typedef {{clave: string, dato: string, leyenda: string, aplicar?: (v: string) => void,
+ *            opciones: [string, string, string, string][]}} Ajuste
+ */
 /** @type {Ajuste[]} opciones: valor, nombre, descripción, dibujo. La primera es la de fábrica */
 const AJUSTES = [
   {
@@ -61,7 +76,7 @@ const AJUSTES = [
       for (const m of document.querySelectorAll('meta[name="theme-color"]')) {
         const meta = /** @type {HTMLMetaElement} */ (m);
         meta.dataset.original ??= meta.content;
-        meta.content = v === "claro" ? "#f4f4f4" : v === "oscuro" ? "#000000" : meta.dataset.original;
+        meta.content = COLOR_BARRA[v] ?? meta.dataset.original;
       }
     },
     opciones: [
@@ -103,10 +118,13 @@ function grupo(a) {
         dibujo.innerHTML = `<svg viewBox="0 0 84 56">${svg}</svg>`;
         return h("label", { class: "opcion-tarjeta vista", title: texto },
           h("input", {
-            type: "radio", name: a.dato, value: v, checked: v === actual,
+            type: "radio",
+            name: a.dato,
+            value: v,
+            checked: v === actual,
             onchange: () => {
               poner(a, v);
-              try { localStorage.setItem(a.clave, v); } catch { /* modo privado */ }
+              guardarLocal(a.clave, v);
               document.dispatchEvent(new CustomEvent("ajuste", { detail: a.dato }));
             },
           }),
@@ -123,12 +141,19 @@ function reducir(si) {
   else delete raiz.dataset.movimiento;
 }
 
-/** @param {string} nombre @param {boolean} si @param {(si: boolean) => void} alCambiar @param {string} [fijo] por qué no se puede cambiar */
+/**
+ * @param {string} nombre @param {boolean} si @param {(si: boolean) => void} alCambiar
+ * @param {string} [fijo] por qué no se puede cambiar
+ */
 const interruptor = (nombre, si, alCambiar, fijo) => h("label", { class: "ajuste-switch", title: fijo },
   h("span", {}, nombre),
   h("input", {
-    type: "checkbox", role: "switch", class: "switch", checked: si, disabled: !!fijo,
-    onchange: (/** @type {Event} */ e) => alCambiar(/** @type {HTMLInputElement} */ (e.target).checked),
+    type: "checkbox",
+    role: "switch",
+    class: "switch",
+    checked: si,
+    disabled: !!fijo,
+    onchange: (/** @type {Event} */ e) => alCambiar(marcado(e)),
   }));
 
 const conTeclado = matchMedia("(hover: hover) and (pointer: fine)");
@@ -138,7 +163,7 @@ function movimientoYTeclado() {
     h("legend", {}, conTeclado.matches ? "Movimiento y teclado" : "Movimiento"),
     interruptor("Reducir movimiento", quieto(), (si) => {
       reducir(si);
-      try { localStorage.setItem(MOVIMIENTO, si ? "reducido" : "normal"); } catch { /* modo privado */ }
+      guardarLocal(MOVIMIENTO, si ? "reducido" : "normal");
     }, sistemaQuieto.matches ? "Tu dispositivo ya lo pide" : undefined),
     conTeclado.matches && interruptor("Atajos de una tecla", unaTecla(), ponerUnaTecla));
 }
@@ -151,16 +176,27 @@ function llenar() {
       h("legend", {}, "Datos"),
       h("div", { class: "ajuste-fila" },
         h("span", {}, "Borrar datos"),
-        h("button", { type: "button", class: "secundario chico peligro-suave", commandfor: "dialogo-borrar", command: "show-modal" }, "Borrar…"))));
+        h("button", {
+          type: "button",
+          class: "secundario chico peligro-suave",
+          commandfor: "dialogo-borrar",
+          command: "show-modal",
+        }, "Borrar…"))));
 }
 
+const DEL_DISPOSITIVO = [...AJUSTES.map((a) => a.clave), MOVIMIENTO, "horautp:atajos"];
+
 /** Los ajustes se quedan. */
-function borrarDatos() {
+export function borrarGuardado() {
   try {
     for (const k of Object.keys(localStorage)) {
-      if (k.startsWith("horautp:") && !AJUSTES.some((a) => a.clave === k) && k !== MOVIMIENTO && k !== "horautp:atajos") localStorage.removeItem(k);
+      if (k.startsWith("horautp:") && !DEL_DISPOSITIVO.includes(k)) localStorage.removeItem(k);
     }
   } catch { /* modo privado */ }
+}
+
+function borrarDatos() {
+  borrarGuardado();
   location.replace(location.pathname);
 }
 
@@ -189,8 +225,8 @@ document.addEventListener("pointerdown", (e) => {
     d.removeEventListener("pointercancel", soltar);
     delete d.dataset.arrastrando;
     d.style.translate = "";
-    // px/ms
-    if (dy > d.offsetHeight / 3 || (velocidad > 0.5 && dy > 24)) d.close();
+    const rapido = velocidad > 0.5 && dy > 24; // px/ms
+    if (dy > d.offsetHeight / 3 || rapido) d.close();
   };
   d.addEventListener("pointermove", mover);
   d.addEventListener("pointerup", soltar);
@@ -198,14 +234,12 @@ document.addEventListener("pointerdown", (e) => {
 });
 
 export function iniciarAjustes() {
-  for (const a of AJUSTES) {
-    let v = a.opciones[0][0];
-    try { v = localStorage.getItem(a.clave) ?? v; } catch { /* modo privado */ }
-    poner(a, v);
-  }
-  try { reducir(localStorage.getItem(MOVIMIENTO) === "reducido"); } catch { /* modo privado */ }
+  for (const a of AJUSTES) poner(a, leerLocal(a.clave) ?? a.opciones[0][0]);
+  reducir(leerLocal(MOVIMIENTO) === "reducido");
   iniciarUnaTecla();
   document.getElementById("dialogo-ajustes")?.addEventListener("command", llenar);
   const borrar = /** @type {HTMLDialogElement} */ (document.getElementById("dialogo-borrar"));
-  borrar.addEventListener("close", () => { if (borrar.returnValue === "borrar") borrarDatos(); });
+  borrar.addEventListener("close", () => {
+    if (borrar.returnValue === "borrar") borrarDatos();
+  });
 }

@@ -1,5 +1,6 @@
 // @ts-check
-// Períodos de 45 min cada 50 min desde las 7:00.
+// Horas en minutos desde las 0:00. La UTP usa dos rejillas: períodos de
+// 45 min cada 50 desde las 7:00 y, en algunos posgrados, horas de 55 min.
 
 export const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 export const DIAS_CORTO = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -20,18 +21,6 @@ export const inicioMin = (k) => PRIMER_INICIO + PASO * k;
 
 /** @param {number} k @param {number} [n] */
 export const finMin = (k, n = 1) => inicioMin(k + n - 1) + DURACION;
-
-/** Minutos → período, o -1. @param {number} min */
-export function periodoDesdeMin(min) {
-  const d = min - PRIMER_INICIO;
-  return d >= 0 && d % PASO === 0 ? d / PASO : -1;
-}
-
-/** Duración → n períodos, o -1. @param {number} min */
-export function periodosDesdeDuracion(min) {
-  const n = (min + PASO - DURACION) / PASO;
-  return Number.isInteger(n) && n > 0 ? n : -1;
-}
 
 /** "7:00-7:45A.M.", "05:50:00 PM", "17:50" → minutos, o NaN. @param {string} texto */
 export function minDesdeTexto(texto) {
@@ -57,14 +46,31 @@ export function formatoHora(min) {
   return `${h12}:${mm}${h24 < 12 ? "am" : "pm"}`;
 }
 
-/** @param {number} k @param {number} [n] */
-export const rangoPeriodo = (k, n = 1) => `${formatoHora(inicioMin(k))}–${formatoHora(finMin(k, n))}`;
+/** @param {number} ini @param {number} fin */
+export const rango = (ini, fin) => `${formatoHora(ini)}–${formatoHora(fin)}`;
 
-/** @param {number} k */
-export function franjaDe(k) {
-  if (k <= 6) return "manana";
-  if (k <= 11) return "tarde";
+/** Turno según la hora de inicio, en minutos. @param {number} min */
+export function franjaDe(min) {
+  if (min < inicioMin(7)) return "manana";
+  if (min < inicioMin(12)) return "tarde";
   return "noche";
+}
+
+/**
+ * Fila de la grilla del portal → [inicio, fin] en minutos, o null.
+ * "12:50-1:35P.M.": el AM/PM del final vale para las dos horas.
+ * Sin hora final ("05:50:00 PM", PDF): un período.
+ * @param {string} texto
+ * @returns {[number, number] | null}
+ */
+export function rangoDesdeTexto(texto) {
+  let ini = minDesdeTexto(texto);
+  if (Number.isNaN(ini)) return null;
+  const guion = texto.search(/[-–]/);
+  const fin = guion < 0 ? NaN : minDesdeTexto(texto.slice(guion + 1));
+  if (Number.isNaN(fin)) return [ini, ini + DURACION];
+  if (ini > fin && ini >= 12 * 60) ini -= 12 * 60;
+  return ini < fin ? [ini, fin] : null;
 }
 
 /** @param {string} s */

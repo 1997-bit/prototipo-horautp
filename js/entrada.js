@@ -1,7 +1,8 @@
 // @ts-check
 // "Horario del Grupo" del portal → Grupo. DOM → Crudo → Grupo (puro).
 
-import { DIAS, diaIndex, limpio, minDesdeTexto, normalizar, periodoDesdeMin } from "./periodos.js";
+import { migrarGrupos } from "./modelo.js";
+import { DIAS, diaIndex, limpio, normalizar, rangoDesdeTexto } from "./periodos.js";
 
 /**
  * @typedef {import("./modelo.js").Grupo} Grupo
@@ -11,10 +12,25 @@ import { DIAS, diaIndex, limpio, minDesdeTexto, normalizar, periodoDesdeMin } fr
 
 // ---------- DOM (navegador) ----------
 
+// Separa las clases de una celda (un <p> por clase: subgrupos, otra materia).
+export const SEPARADOR = "¶";
+
+/** Cloudflare: el primer byte es la clave XOR del resto. @param {string} hex */
+function cfemail(hex) {
+  const k = parseInt(hex.slice(0, 2), 16);
+  let s = "";
+  for (let i = 2; i < hex.length; i += 2) s += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16) ^ k);
+  return s;
+}
+
 /** @param {Element} celda */
 function textoCelda(celda) {
   const c = /** @type {Element} */ (celda.cloneNode(true));
-  c.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
+  for (const el of c.querySelectorAll("[data-cfemail]")) {
+    el.textContent = cfemail(el.getAttribute("data-cfemail") ?? "");
+  }
+  for (const br of c.querySelectorAll("br")) br.replaceWith("\n");
+  for (const p of [...c.querySelectorAll("p")].slice(1)) p.before(`\n${SEPARADOR}\n`);
   return (c.textContent ?? "")
     .split("\n").map(limpio).filter(Boolean).join("\n");
 }
@@ -62,12 +78,15 @@ export function grupoDesdeHtml(html) {
 
 // ---------- interpretación (pura) ----------
 
-// "SEDE: PANAMÁ" (PDF) o "VERAGUAS - 4GS111" (portal)
+// "SEDE: PANAMÁ" (PDF), "SEDE PANAMÁ" o "CENTRO REGIONAL DE COCLÉ" (portal),
+// "VERAGUAS - 4GS111" (Horario del Grupo)
 const SEDES = ["BOCAS DEL TORO", "PANAMA OESTE", "PANAMA", "AZUERO", "CHIRIQUI", "COCLE", "COLON", "VERAGUAS"];
-const RE_SEDE = new RegExp(`(?:SEDE:\\s*|\\b)(${SEDES.join("|")})\\b(?=\\s*(?:CARRERA|-\\s*\\d[A-Z]))`);
-// "GRUPO:" primero: antes van los botones de otros grupos.
-const RE_GRUPO_ROTULO = /GRUPO:\s*(\d[A-Z]{1,4}\d{3})\b/;
-const RE_GRUPO = /\b(\d[A-Z]{1,4}\d{3})\b/;
+const RE_SEDE = new RegExp(`(?:\\bSEDE:?\\s+|CENTRO REGIONAL DE\\s+)(${SEDES.join("|")})\\b`
+  + `|\\b(${SEDES.join("|")})\\b(?=\\s*(?:CARRERA|-\\s*\\d{1,2}[A-Z]))`);
+// 4GS111, 11D234, 1EG1010, V1R122, VAA331. "GRUPO:" primero: antes van los botones de otros grupos.
+// Sin normalizar: el portal distingue 6IN141 de 6in141.
+const RE_GRUPO_ROTULO = /GRUPO:\s*([A-Z0-9]{1,4}\d{3,4})\b/i;
+const RE_GRUPO = /\b([A-Z]?\d{1,2}[A-Z]{1,4}\d{3,4}|[A-Z]{3}\d{3})\b/i;
 const RE_PERIODO = /\b(I{1,3})\s*-\s*(\d{4})\b/;
 const RE_PERIODO_ROTULO = /PERIODO:\s*(I{1,3})\b/;
 const RE_ANO = /ANO:\s*(\d{4})/;
@@ -75,6 +94,7 @@ const RE_AULA = /\baula:?\s*(.+)/i;
 const RE_CL = /\(\s*C\s*\+\s*L\s*\)/i;
 const RE_L = /\(\s*L\s*\)/i;
 const RE_PARENTESIS_FINAL = /\([^)]*\)\s*$/;
+const RE_SUBGRUPO = /\(\s*([A-F])\s*\)\s*$/i;
 const RE_NO_CLAVE = /[^A-Z0-9]/g;
 const RE_SALTOS = /\n/g;
 const RE_ENTERO = /^\d+$/;
@@ -85,7 +105,9 @@ const clave = (s) => normalizar(s).replace(RE_NO_CLAVE, "");
 
 /**
  * "ESTRUCT.DATOS I(L )\naula 4fis" → {nombre, tipo, aula}
+ * "MÉTODOS NUMÉRIC(B )\naula 1-311" → {…, sub: "B"}
  * @param {string} texto
+ * @returns {{nombre: string, tipo: string, aula: string, sub?: string}}
  */
 export function leerCelda(texto) {
   const m = RE_AULA.exec(texto);
@@ -94,14 +116,38 @@ export function leerCelda(texto) {
   let tipo = "C";
   if (RE_CL.test(antes)) tipo = "CL";
   else if (RE_L.test(antes)) tipo = "L";
+  const sub = tipo === "C" ? RE_SUBGRUPO.exec(antes)?.[1].toUpperCase() : undefined;
   const nombre = antes.replace(RE_PARENTESIS_FINAL, "").trim();
-  return { nombre, tipo, aula };
+  return sub ? { nombre, tipo, aula, sub } : { nombre, tipo, aula };
 }
 
-/** @param {string[][]} t */
-function esGrilla(t) {
-  return t.some((f) => f.filter((c) => diaIndex(c) >= 0).length >= 5);
+/**
+ * Una celda puede traer varias clases: separadas por SEPARADOR (DOM) o,
+ * en texto pegado, una tras otra después de cada "aula …".
+ * @param {string} texto
+ */
+export function leerCeldas(texto) {
+  /** @type {string[]} */
+  const partes = [];
+  for (const trozo of texto.split(SEPARADOR)) {
+    let actual = [];
+    for (const linea of trozo.split("\n").map((l) => l.trim()).filter(Boolean)) {
+      actual.push(linea);
+      if (RE_AULA.test(linea)) {
+        partes.push(actual.join("\n"));
+        actual = [];
+      }
+    }
+    if (actual.length) partes.push(actual.join("\n"));
+  }
+  return partes.map(leerCelda).filter((c) => c.nombre);
 }
+
+/** Fila con al menos LUNES a VIERNES. @param {string[]} f */
+const esCabeceraDias = (f) => f.filter((c) => diaIndex(c) >= 0).length >= 5;
+
+/** @param {string[][]} t */
+const esGrilla = (t) => t.some(esCabeceraDias);
 
 /** @param {string[][]} t */
 function esLeyenda(t) {
@@ -129,14 +175,15 @@ function leerLeyenda(t) {
       codhora: Number(f[cCodhora]),
       asignatura: limpio(f[cAsig]),
       profesor: limpio(f[cProf] ?? ""),
-      email: (f[cEmail] ?? "").trim(),
+      // El portal a veces trae espacios o saltos dentro del correo.
+      email: (f[cEmail] ?? "").replace(/\s+/g, ""),
       bloques: [],
     }));
 }
 
 /** @param {string[][]} t @param {Materia[]} materias */
 function leerGrilla(t, materias) {
-  const iCab = t.findIndex((f) => f.filter((c) => diaIndex(c) >= 0).length >= 5);
+  const iCab = t.findIndex(esCabeceraDias);
   const colDia = t[iCab].map(diaIndex);
   const porClave = new Map(materias.map((m) => [clave(m.asignatura), m]));
 
@@ -151,25 +198,33 @@ function leerGrilla(t, materias) {
     return m;
   };
 
-  /** @type {([Materia, import("./modelo.js").Bloque] | null)[]} */
-  const abierto = [null, null, null, null, null, null, null];
+  // Bloque abierto por día, materia, tipo, aula y subgrupo: se alarga si la
+  // fila siguiente empieza en el recreo (≤ 10 min) tras su fin.
+  /** @type {Map<string, import("./modelo.js").Bloque>} */
+  const abiertos = new Map();
+  const filas = t.slice(iCab + 1)
+    .flatMap((celdas) => {
+      const r = rangoDesdeTexto(celdas[0] ?? "");
+      return r ? [{ ini: r[0], fin: r[1], celdas }] : [];
+    })
+    .sort((a, b) => a.ini - b.ini);
 
-  for (const fila of t.slice(iCab + 1)) {
-    const k = periodoDesdeMin(minDesdeTexto(fila[0] ?? ""));
-    if (k < 0) continue;
-    fila.forEach((txt, c) => {
+  for (const { ini, fin, celdas } of filas) {
+    celdas.forEach((txt, c) => {
       const d = colDia[c];
       if (d < 0 || !txt.trim()) return;
-      const { nombre, tipo, aula } = leerCelda(txt);
-      const m = buscar(nombre);
-      const a = abierto[d];
-      if (a && a[0] === m && a[1][3] === tipo && a[1][4] === aula && a[1][1] + a[1][2] === k) {
-        a[1][2]++;
-      } else {
+      for (const { nombre, tipo, aula, sub = "" } of leerCeldas(txt)) {
+        const m = buscar(nombre);
+        const llave = `${d}|${m.codhora}|${tipo}|${aula}|${sub}`;
+        const a = abiertos.get(llave);
+        if (a && ini >= a[2] && ini - a[2] <= 10) {
+          a[2] = Math.max(a[2], fin);
+          continue;
+        }
         /** @type {import("./modelo.js").Bloque} */
-        const b = [d, k, 1, tipo, aula];
+        const b = sub ? [d, ini, fin, tipo, aula, sub] : [d, ini, fin, tipo, aula];
         m.bloques.push(b);
-        abierto[d] = [m, b];
+        abiertos.set(llave, b);
       }
     });
   }
@@ -188,14 +243,16 @@ export function grupoDesdeCrudo(crudo) {
   for (const m of materias) m.bloques.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 
   const texto = normalizar(crudo.texto);
-  const grupo = RE_GRUPO_ROTULO.exec(texto)?.[1]
-    ?? RE_GRUPO.exec(texto)?.[1]
+  const crudoLimpio = limpio(crudo.texto);
+  const grupo = RE_GRUPO_ROTULO.exec(crudoLimpio)?.[1]
+    ?? RE_GRUPO.exec(crudoLimpio)?.[1]
     ?? `SIN-CODIGO-${Math.min(...materias.map((m) => m.codhora))}`;
   const per = RE_PERIODO.exec(texto);
   const periodo = per
     ? `${per[1]}-${per[2]}`
     : [RE_PERIODO_ROTULO.exec(texto)?.[1], RE_ANO.exec(texto)?.[1]].filter(Boolean).join("-");
-  const sede = RE_SEDE.exec(texto)?.[1];
+  const rs = RE_SEDE.exec(texto);
+  const sede = rs?.[1] ?? rs?.[2];
 
   return { grupo, periodo, ...(sede ? { sede } : {}), materias };
 }
@@ -208,7 +265,7 @@ export function gruposDesdeJson(datos) {
       throw new Error("El JSON no tiene el formato de grupo esperado.");
     }
   }
-  return lista;
+  return migrarGrupos(lista);
 }
 
 /**
@@ -227,8 +284,8 @@ export function grupoManual(datos, grupos) {
 
   const bloques = [...datos.bloques].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   for (let i = 1; i < bloques.length; i++) {
-    const [d, k] = bloques[i], [dp, kp, np] = bloques[i - 1];
-    if (d === dp && k < kp + np) throw new Error(`Dos horas del ${DIAS[d].toLowerCase()} se pisan.`);
+    const [d, ini] = bloques[i], [dp, , finPrevio] = bloques[i - 1];
+    if (d === dp && ini < finPrevio) throw new Error(`Dos horas del ${DIAS[d].toLowerCase()} se pisan.`);
   }
 
   const todas = grupos.flatMap((g) => g.materias);

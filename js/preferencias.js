@@ -1,7 +1,7 @@
 // @ts-check
 // Preferencias: lo descartado sale de la búsqueda; el resto suma penalidad.
 
-import { huecos } from "./bits.js";
+import { PALABRAS, huecosDia } from "./bits.js";
 import { franjaDe } from "./periodos.js";
 
 /**
@@ -14,13 +14,14 @@ import { franjaDe } from "./periodos.js";
 export const PESOS = {
   horario: 10,
   dias: 20,
-  hueco: 5,
+  // Por celda de 10 min: un período libre (50 min) pesa 5.
+  hueco: 1,
 };
 
 /** @param {Seccion} s @param {string | undefined} franja */
 export function cumpleHorario(s, franja) {
   if (!franja) return true;
-  return s.bloques.every(([, k]) => franjaDe(k) === franja);
+  return s.bloques.every(([, ini]) => franjaDe(ini) === franja);
 }
 
 /** @param {Seccion} s @param {Prefs} prefs */
@@ -28,16 +29,31 @@ export const penalSeccion = (s, prefs) => (cumpleHorario(s, prefs.horario) ? 0 :
 
 /** La misma que calcula el solver. @param {Seccion[]} secciones @param {Prefs} prefs */
 export function penalidad(secciones, prefs) {
-  const ocupado = [0, 0, 0, 0, 0, 0, 0];
-  let p = 0;
+  const ocupado = new Int32Array(7 * PALABRAS);
+  const tmp = new Int32Array(PALABRAS);
+  let p = 0, dias = 0;
   for (const s of secciones) {
     p += penalSeccion(s, prefs);
-    s.masks.forEach((m, d) => { ocupado[d] |= m; });
+    dias |= s.dias;
+    s.masks.forEach((m, i) => { ocupado[i] |= m; });
   }
-  const nDias = ocupado.filter(Boolean).length;
-  const nHuecos = ocupado.reduce((t, m) => t + huecos(m), 0);
+  let nDias = 0, nHuecos = 0;
+  for (let d = 0; d < 7; d++) {
+    if (dias & (1 << d)) nDias++;
+    nHuecos += huecosDia(ocupado, d * PALABRAS, tmp);
+  }
   if (prefs.menosDias && nDias) p += (nDias - 1) * PESOS.dias;
   return p + nHuecos * PESOS.hueco;
+}
+
+/** Sin turno no hay "solo ese turno". @param {Prefs} prefs @param {string} turno "" = da igual */
+export function ponerTurno(prefs, turno) {
+  if (turno) {
+    prefs.horario = turno;
+    return;
+  }
+  delete prefs.horario;
+  prefs.soloTurno = false;
 }
 
 /** @param {Seccion} s @param {Prefs} prefs */

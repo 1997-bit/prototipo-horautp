@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { grupoDesdeCrudo, grupoManual, leerCelda } from "../js/entrada.js";
+import { grupoDesdeCrudo, grupoManual, leerCelda, leerCeldas } from "../js/entrada.js";
+import { finMin, inicioMin } from "../js/periodos.js";
+
+/** Período k de 50 min, n seguidos → bloque en minutos. */
+const P = (d, k, n, tipo, aula) => [d, inicioMin(k), finMin(k, n), tipo, aula];
 
 // "Horario del Grupo" 4GS111 del portal.
 const C = (nombre, aula = "4C1") => `${nombre}\naula ${aula}`;
@@ -50,12 +54,12 @@ test("grupo 4GS111 completo", () => {
   assert.equal(g.sede, "VERAGUAS");
   const bloques = Object.fromEntries(g.materias.map((m) => [m.codasig, m.bloques]));
   assert.deepEqual(bloques, {
-    "0599": [[0, 0, 2, "C", "4C1"], [4, 0, 1, "C", "4C1"]],
-    1474: [[2, 0, 2, "C", "4C1"], [3, 3, 1, "C", "4C1"], [3, 4, 2, "L", "4C1"]],
-    1489: [[2, 2, 2, "C", "4C1"], [4, 3, 1, "L", "4C1"]],
-    8362: [[0, 2, 1, "C", "4C1"], [0, 3, 2, "L", "4fis"], [4, 1, 2, "C", "4C1"]],
-    8393: [[1, 1, 1, "C", "4C1"], [1, 2, 2, "L", "4fis"], [3, 1, 2, "C", "4C1"]],
-    8398: [[1, 4, 3, "C", "4C1"], [4, 4, 2, "L", "4fis"]],
+    "0599": [P(0, 0, 2, "C", "4C1"), P(4, 0, 1, "C", "4C1")],
+    1474: [P(2, 0, 2, "C", "4C1"), P(3, 3, 1, "C", "4C1"), P(3, 4, 2, "L", "4C1")],
+    1489: [P(2, 2, 2, "C", "4C1"), P(4, 3, 1, "L", "4C1")],
+    8362: [P(0, 2, 1, "C", "4C1"), P(0, 3, 2, "L", "4fis"), P(4, 1, 2, "C", "4C1")],
+    8393: [P(1, 1, 1, "C", "4C1"), P(1, 2, 2, "L", "4fis"), P(3, 1, 2, "C", "4C1")],
+    8398: [P(1, 4, 3, "C", "4C1"), P(4, 4, 2, "L", "4fis")],
   });
   assert.equal(g.materias.find((m) => m.codasig === "1474").codhora, 3719);
 });
@@ -93,14 +97,14 @@ test("Horarios de Grupos: el código es el del horario, no el primer botón", ()
   const g = grupoDesdeCrudo(nocturno);
   assert.equal(g.grupo, "1LB421");
   assert.equal(g.periodo, "II-2026");
-  assert.deepEqual(g.materias.find((m) => m.codasig === "4482").bloques, [[0, 16, 3, "L", "TD-4"]]);
+  assert.deepEqual(g.materias.find((m) => m.codasig === "4482").bloques, [P(0, 16, 3, "L", "TD-4")]);
 });
 
 test("materia a mano: se une a la del portal por nombre", () => {
   const portal = grupoDesdeCrudo(structuredClone(crudo));
   const g = grupoManual({
     asignatura: " base de  datos i ", profesor: "Pérez,  Eric", grupo: "1gs 221",
-    bloques: [[3, 2, 2, "C", ""], [1, 0, 2, "L", "4fis"]],
+    bloques: [P(3, 2, 2, "C", ""), P(1, 0, 2, "L", "4fis")],
   }, [portal]);
   assert.equal(g.grupo, "1GS221");
   assert.equal(g.manual, true);
@@ -108,16 +112,84 @@ test("materia a mano: se une a la del portal por nombre", () => {
   assert.equal(m.codasig, "8398");
   assert.equal(m.codhora, -1);
   assert.equal(m.profesor, "Pérez, Eric");
-  assert.deepEqual(m.bloques, [[1, 0, 2, "L", "4fis"], [3, 2, 2, "C", ""]]);
+  assert.deepEqual(m.bloques, [P(1, 0, 2, "L", "4fis"), P(3, 2, 2, "C", "")]);
 
-  const otra = grupoManual({ asignatura: "Redes", profesor: "", grupo: "", bloques: [[0, 0, 1, "C", ""]] }, [portal, g]);
+  const otra = grupoManual({ asignatura: "Redes", profesor: "", grupo: "", bloques: [P(0, 0, 1, "C", "")] }, [portal, g]);
   assert.equal(otra.materias[0].codhora, -2);
   assert.equal(otra.materias[0].codasig, "M-REDES");
 });
 
 test("materia a mano: errores", () => {
   const base = { asignatura: "Redes", profesor: "", grupo: "" };
-  assert.throws(() => grupoManual({ ...base, asignatura: " ", bloques: [[0, 0, 1, "C", ""]] }, []), /nombre/);
+  assert.throws(() => grupoManual({ ...base, asignatura: " ", bloques: [P(0, 0, 1, "C", "")] }, []), /nombre/);
   assert.throws(() => grupoManual({ ...base, bloques: [] }, []), /al menos/);
-  assert.throws(() => grupoManual({ ...base, bloques: [[0, 0, 2, "C", ""], [0, 1, 1, "L", ""]] }, []), /lunes se pisan/);
+  assert.throws(() => grupoManual({ ...base, bloques: [P(0, 0, 2, "C", ""), P(0, 1, 1, "L", "")] }, []), /lunes se pisan/);
+  assert.doesNotThrow(() => grupoManual({ ...base, bloques: [P(0, 0, 1, "C", ""), P(0, 1, 1, "L", "")] }, []));
+});
+
+test("celda con varias clases: separador del DOM o un 'aula' tras otro", () => {
+  const esperado = [
+    { nombre: "MÉTODOS NUMÉRIC", tipo: "C", aula: "1-312", sub: "A" },
+    { nombre: "MÉTODOS NUMÉRIC", tipo: "C", aula: "1-311", sub: "B" },
+  ];
+  assert.deepEqual(leerCeldas("MÉTODOS NUMÉRIC(A )\naula 1-312\n¶\nMÉTODOS NUMÉRIC(B )\naula 1-311"), esperado);
+  assert.deepEqual(leerCeldas("MÉTODOS NUMÉRIC(A )\naula 1-312\nMÉTODOS NUMÉRIC(B )\naula 1-311"), esperado);
+  assert.deepEqual(leerCeldas("TEORIA DE CONTR\naula 1-328\n¶\nCIEN.MATER.(A )\naula 1-328").map((c) => c.nombre), ["TEORIA DE CONTR", "CIEN.MATER."]);
+  assert.deepEqual(leerCeldas("BASE DE\nDATOS I(L )\nAULA: 3-N04"), [{ nombre: "BASE DE DATOS I", tipo: "L", aula: "3-N04" }]);
+});
+
+// Portal: maestría nocturna en horas de 55 min, código con dos dígitos.
+const maestria = {
+  texto: "Matrícula UTP Periodo: II-2026 Horarios de Grupos Grupos 11D234 FACULTAD DE INGENIERÍA INDUSTRIAL "
+    + "SEDE PANAMÁ HORARIO DE CLASE 11D234 MAEST.SIST.LOG. Y OPER. ESP.PL III AÑO NOCTURNO HORA LUNES",
+  tablas: [
+    [
+      ["HORA", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO"],
+      ...["6:00-6:55P.M.", "7:00-7:55P.M.", "8:00-8:55P.M.", "9:00-9:55P.M."].map((h) => [
+        h, "", "", C("PLANIF. FINANC.", "P307"), "", C("PLANIF. FINANC.", "P307"), "", "",
+      ]),
+    ],
+    [
+      ["ASIGNATURA", "CODASIG", "CODHORA", "PROFESOR", "EMAIL", "SEDE *"],
+      ["GER. DE TRANSP.", "9576", "0181", "FLORES, TAYRA", "tayra.flores@utp.ac.pa", ""],
+      ["PLANIF. FINANC.", "9579", "0180", "PEÑA, JORGE", "jorge.pena@utp.ac.pa", ""],
+    ],
+  ],
+};
+
+test("horas de 55 min, código 11D234 y 'SEDE PANAMÁ'", () => {
+  const g = grupoDesdeCrudo(maestria);
+  assert.equal(g.grupo, "11D234");
+  assert.equal(g.sede, "PANAMA");
+  const pf = g.materias.find((m) => m.codasig === "9579");
+  assert.deepEqual(pf.bloques, [[2, 1080, 1315, "C", "P307"], [4, 1080, 1315, "C", "P307"]]);
+  assert.deepEqual(g.materias.find((m) => m.codasig === "9576").bloques, []);
+});
+
+test("subgrupos y otra materia en la misma celda; código de 4 dígitos; centro regional", () => {
+  const sub = (s, aula) => C(`MÉTODOS NUMÉRIC(${s} )`, aula);
+  const g = grupoDesdeCrudo({
+    texto: "Periodo: II-2026 Grupos 1EG1010 1EG1011 CENTRO REGIONAL DE COCLÉ HORARIO DE CLASE GRUPO: 1EG1011 HORA LUNES",
+    tablas: [
+      [
+        ["HORA", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO"],
+        ["7:00-7:45A.M.", C("MÉTODOS NUMÉRIC"), "", `${sub("A", "1-312")}\n¶\n${sub("B", "1-311")}`, "", "", "", ""],
+        ["7:50-8:35A.M.", C("MÉTODOS NUMÉRIC"), "", `${sub("A", "1-312")}\n¶\n${C("CIEN.MATER.", "1-328")}`, "", "", "", ""],
+      ],
+      [
+        ["ASIGNATURA", "CODASIG", "CODHORA", "PROFESOR", "EMAIL", "SEDE *"],
+        ["MÉTODOS NUMÉRIC", "1549", "0300", "RUIZ, ANA", "", ""],
+        ["CIEN.MATER.", "1550", "0301", "", "", ""],
+      ],
+    ],
+  });
+  assert.equal(g.grupo, "1EG1011");
+  assert.equal(g.sede, "COCLE");
+  const [mn, cm] = g.materias;
+  assert.deepEqual(mn.bloques, [
+    P(0, 0, 2, "C", "4C1"),
+    [...P(2, 0, 2, "C", "1-312"), "A"],
+    [...P(2, 0, 1, "C", "1-311"), "B"],
+  ]);
+  assert.deepEqual(cm.bloques, [P(2, 1, 1, "C", "1-328")]);
 });

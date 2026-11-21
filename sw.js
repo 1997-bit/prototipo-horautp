@@ -1,6 +1,6 @@
 // Offline, stale-while-revalidate.
 
-const CACHE = "horautp-v37";
+const CACHE = "horautp-v41";
 const ORIGEN = `${location.origin}/`;
 const ARCHIVOS = [
   "./",
@@ -11,17 +11,26 @@ const ARCHIVOS = [
   "js/ajustes.js",
   "js/atajos.js",
   "js/bits.js",
+  "js/busqueda.js",
   "js/calendario.js",
+  "js/carrusel.js",
+  "js/deshacer.js",
   "js/dom.js",
+  "js/elecciones.js",
   "js/entrada.js",
   "js/estado.js",
+  "js/filtros.js",
+  "js/horario.js",
   "js/main.js",
+  "js/manual.js",
+  "js/materias.js",
   "js/modelo.js",
   "js/periodos.js",
   "js/preferencias.js",
   "js/solver.js",
   "js/tema.js",
   "js/ui.js",
+  "js/vendor/webmcp-polyfill.js",
   "js/worker.js",
   "data/ejemplo.json",
 ];

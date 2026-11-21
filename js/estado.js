@@ -1,9 +1,12 @@
 // @ts-check
 
+import { migrarGrupos } from "./modelo.js";
+
 /**
- * @typedef {{grupos: import("./modelo.js").Grupo[], requeridas: string[],
- *            prefs: import("./preferencias.js").Prefs & {solo: Record<string, string[]>,
- *                                                          fijas: number[], excluidas: number[], evitados: string[]}}} Estado
+ * Prefs con las listas siempre presentes.
+ * @typedef {import("./preferencias.js").Prefs & {solo: Record<string, string[]>,
+ *            fijas: number[], excluidas: number[], evitados: string[]}} PrefsEstado
+ * @typedef {{grupos: import("./modelo.js").Grupo[], requeridas: string[], prefs: PrefsEstado}} Estado
  */
 
 const CLAVE = "horautp:v1";
@@ -30,16 +33,19 @@ export function migrar(viejas) {
 
 /** @returns {Estado} */
 export function cargar() {
+  const base = vacio();
   try {
     const e = JSON.parse(localStorage.getItem(CLAVE) ?? "null");
-    if (e && Array.isArray(e.grupos)) {
-      const base = vacio();
-      return { ...base, ...e, prefs: { ...base.prefs, ...migrar(e.prefs ?? {}) } };
-    }
+    if (!e || !Array.isArray(e.grupos)) return base;
+    return {
+      ...base,
+      ...e,
+      grupos: migrarGrupos(e.grupos),
+      prefs: { ...base.prefs, ...migrar(e.prefs ?? {}) },
+    };
   } catch {
-    // corrupto
+    return base; // corrupto
   }
-  return vacio();
 }
 
 // Safari borra a los 7 días sin visita. Firefox pide permiso y no borra: se omite.
@@ -53,7 +59,9 @@ function pedirPersistencia() {
 
 /** @param {() => void} alCambiar */
 export function escucharOtrasPestanas(alCambiar) {
-  addEventListener("storage", (ev) => { if (ev.key === CLAVE) alCambiar(); });
+  addEventListener("storage", (ev) => {
+    if (ev.key === CLAVE) alCambiar();
+  });
 }
 
 /** @param {Estado} e */

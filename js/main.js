@@ -3,11 +3,13 @@
 import { iniciarAgentes } from "./agentes.js";
 import { iniciarAjustes, quieto } from "./ajustes.js";
 import { MAC, iniciarAtajos } from "./atajos.js";
+import { deshacerUltimo, hayDeshacer } from "./deshacer.js";
+import { guardarLocal, leerLocal } from "./dom.js";
 import { cargar, escucharOtrasPestanas } from "./estado.js";
+import { irAOpcion } from "./horario.js";
+import { iniciarDatos } from "./materias.js";
 import { construirSecciones } from "./modelo.js";
-import {
-  descartar, deshacerUltimo, hayDeshacer, iniciarDatos, irAOpcion, renderMaterias, renderOpciones,
-} from "./ui.js";
+import { PASOS, descartar, pasoActual, repintar } from "./ui.js";
 
 // iOS: sin esto no aplica :active
 document.addEventListener("touchstart", () => {}, { passive: true });
@@ -33,13 +35,16 @@ if (!("closedBy" in HTMLDialogElement.prototype)) {
 iniciarAjustes();
 const estado = cargar();
 /** @type {import("./ui.js").App} */
-const app = { estado, secciones: construirSecciones(estado.grupos), resultado: null, opcion: 0, pedido: 0, enCurso: 0, mostradas: null };
-
-/** @type {Record<string, (app: import("./ui.js").App) => void>} */
-const PASOS = {
-  materias: renderMaterias,
-  opciones: renderOpciones,
+const app = {
+  estado,
+  secciones: construirSecciones(estado.grupos),
+  resultado: null,
+  opcion: 0,
+  pedido: 0,
+  enCurso: 0,
+  mostradas: null,
 };
+
 // Enlaces viejos
 /** @type {Record<string, string>} */
 const ANTES = { datos: "materias", preferencias: "opciones" };
@@ -86,8 +91,8 @@ function animar(t) {
   cuadro = quieta ? 0 : requestAnimationFrame(animar);
 }
 
-/** @param {boolean} [animada] */
-function moverPildora(animada = true) {
+/** @param {{animada?: boolean}} [opciones] */
+function moverPildora({ animada = true } = {}) {
   const a = pasos.querySelector("a[aria-current]");
   if (!(a instanceof HTMLElement)) return;
   const l = a.offsetLeft, r = l + a.offsetWidth;
@@ -112,7 +117,9 @@ function moverPildora(animada = true) {
     cuadro = requestAnimationFrame(animar);
   }
 }
-new ResizeObserver(() => { if (!cuadro) moverPildora(false); }).observe(pasos);
+new ResizeObserver(() => {
+  if (!cuadro) moverPildora({ animada: false });
+}).observe(pasos);
 
 function rutear() {
   const id = location.hash.slice(1);
@@ -120,8 +127,8 @@ function rutear() {
     history.replaceState(null, "", `#${ANTES[id]}`);
     return rutear();
   }
-  const paso = id in PASOS ? id : "materias";
-  try { localStorage.setItem(ULTIMO, paso); } catch { /* modo privado */ }
+  const paso = pasoActual();
+  guardarLocal(ULTIMO, paso);
   for (const s of document.querySelectorAll("main > section")) s.toggleAttribute("hidden", s.id !== paso);
   for (const a of document.querySelectorAll("#pasos a")) {
     if (a.getAttribute("href") === `#${paso}`) a.setAttribute("aria-current", "step");
@@ -134,10 +141,12 @@ function rutear() {
 }
 
 const enOpciones = () => location.hash === "#opciones" && !document.activeElement?.closest(".carrusel");
+// En un campo de texto, Ctrl+Z deshace lo escrito.
+const escribiendo = () => !!document.activeElement?.matches("textarea, input:not([type=checkbox], [type=radio])");
 iniciarAtajos({
   ArrowLeft: { texto: "Opción anterior", si: enOpciones, accion: () => irAOpcion(app, app.opcion - 1) },
   ArrowRight: { texto: "Opción siguiente", si: enOpciones, accion: () => irAOpcion(app, app.opcion + 1) },
-  "Mod+z": { texto: "Deshacer", si: () => hayDeshacer() && !document.activeElement?.matches("textarea, input:not([type=checkbox], [type=radio])"), accion: deshacerUltimo },
+  "Mod+z": { texto: "Deshacer", si: () => hayDeshacer() && !escribiendo(), accion: deshacerUltimo },
 });
 
 if (MAC) {
@@ -145,14 +154,20 @@ if (MAC) {
   pegar.placeholder = pegar.placeholder.replaceAll("Ctrl+", "⌘");
 }
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  // Versión nueva: recarga para no mezclar JS viejo con datos nuevos.
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener("controllerchange", () => location.reload(), { once: true });
+  }
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
 
 iniciarDatos(app);
 iniciarAgentes(app);
-if (!location.hash && estado.grupos.length) {
-  let ultimo = null;
-  try { ultimo = localStorage.getItem(ULTIMO); } catch { /* modo privado */ }
-  if (ultimo && ultimo in PASOS) for (const p of ORDEN.slice(1, ORDEN.indexOf(ultimo) + 1)) history.pushState(null, "", `#${p}`);
+// Volver al último paso, con los anteriores en el historial.
+const ultimoPaso = leerLocal(ULTIMO);
+if (!location.hash && estado.grupos.length && ultimoPaso && ultimoPaso in PASOS) {
+  for (const p of ORDEN.slice(1, ORDEN.indexOf(ultimoPaso) + 1)) history.pushState(null, "", `#${p}`);
 }
 // Volver a un paso es history.back(), no apilar.
 const nav = /** @type {any} */ (window).navigation;
@@ -173,13 +188,10 @@ addEventListener("hashchange", rutear);
 escucharOtrasPestanas(() => {
   Object.assign(estado, cargar());
   descartar(app);
-  const paso = location.hash.slice(1);
-  PASOS[paso in PASOS ? paso : "materias"](app);
+  repintar(app);
 });
 document.addEventListener("ajuste", (e) => {
-  if (/** @type {CustomEvent} */ (e).detail !== "hora") return;
-  const paso = location.hash.slice(1);
-  PASOS[paso in PASOS ? paso : "materias"](app);
+  if (/** @type {CustomEvent} */ (e).detail === "hora") repintar(app);
 });
 rutear();
 

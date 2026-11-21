@@ -1,13 +1,17 @@
 // @ts-check
 // data-atajo="g m": espacio = secuencia, "+" = juntas, Mod = Ctrl o ⌘.
 
+import { guardarLocal, leerLocal } from "./dom.js";
+
 /** @typedef {{texto: string, si?: () => unknown, accion: () => void}} Atajo */
 
 const raiz = document.documentElement;
 const CLAVE = "horautp:atajos";
 
-export const MAC = /mac|iphone|ipad/i.test(/** @type {any} */ (navigator).userAgentData?.platform ?? navigator.userAgent);
-const FLECHAS = /** @type {Record<string, string>} */ ({ ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓" });
+const plataforma = /** @type {any} */ (navigator).userAgentData?.platform ?? navigator.userAgent;
+export const MAC = /mac|iphone|ipad/i.test(plataforma);
+/** @type {Record<string, string>} */
+const FLECHAS = { ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓" };
 const RE_LETRA_FINAL = /(^|\+|⌘)(\p{Ll})$/u;
 const RE_LETRA = /^\p{L}$/u;
 const mayus = (/** @type {string} */ k) => k.replace(RE_LETRA_FINAL, (_, a, b) => a + b.toUpperCase());
@@ -56,8 +60,14 @@ function alTeclear(e) {
   if (e.isComposing || e.key === "Dead") return;
   const t = tecla(e);
   if (!t || e.defaultPrevented || document.querySelector("dialog[open]")) return;
-  if (t === "Escape" && pendiente.length) { reiniciar(); return; }
-  if (e.repeat && pendiente.length) { e.preventDefault(); return; }
+  if (t === "Escape" && pendiente.length) {
+    reiniciar();
+    return;
+  }
+  if (e.repeat && pendiente.length) {
+    e.preventDefault();
+    return;
+  }
   const destino = /** @type {Element} */ (e.target);
   if (esCampo(destino) && !t.startsWith("Mod+")) return;
   if (!pendiente.length && ["Space", "Enter"].includes(t) && destino.closest("a, button, summary")) return;
@@ -89,8 +99,11 @@ function anotar() {
     const visto = teclas.split(" ").map(verTecla).join(" ");
     const activo = permitido(teclas);
     el.title = activo ? (base ? `${base} (${visto})` : `Atajo: ${visto}`) : base;
-    if (activo && !teclas.includes(" ")) el.setAttribute("aria-keyshortcuts", mayus(teclas.replace("Mod+", MAC ? "Meta+" : "Control+")));
-    else el.removeAttribute("aria-keyshortcuts");
+    if (activo && !teclas.includes(" ")) {
+      el.setAttribute("aria-keyshortcuts", mayus(teclas.replace("Mod+", MAC ? "Meta+" : "Control+")));
+    } else {
+      el.removeAttribute("aria-keyshortcuts");
+    }
   }
 }
 
@@ -101,6 +114,13 @@ const nuevo = (tag, props = {}, ...hijos) => {
   return el;
 };
 
+/** @param {string} teclas */
+function seccionDe(teclas) {
+  if (teclas.startsWith("g ")) return "Ir a";
+  if (teclas === "?" || teclas.startsWith("Mod+")) return "General";
+  return "Este paso";
+}
+
 function secciones() {
   /** @type {Record<string, {teclas: string, texto: string}[]>} */
   const grupos = { "Ir a": [], "Este paso": [], "General": [] };
@@ -108,13 +128,13 @@ function secciones() {
   for (const a of todos()) {
     if (vistos.has(a.teclas)) continue;
     vistos.add(a.teclas);
-    const g = a.teclas.startsWith("g ") ? "Ir a" : a.teclas === "?" || a.teclas.startsWith("Mod+") ? "General" : "Este paso";
-    grupos[g].push(a);
+    grupos[seccionDe(a.teclas)].push(a);
   }
   return Object.entries(grupos).filter(([, l]) => l.length).flatMap(([nombre, l]) => {
     const dl = nuevo("dl", { className: "atajos-lista" });
     for (const { teclas, texto } of l) {
-      dl.append(nuevo("dt", {}, ...teclas.split(" ").map((k) => nuevo("kbd", { textContent: verTecla(k) }))), nuevo("dd", { textContent: texto }));
+      const kbds = teclas.split(" ").map((k) => nuevo("kbd", { textContent: verTecla(k) }));
+      dl.append(nuevo("dt", {}, ...kbds), nuevo("dd", { textContent: texto }));
     }
     return [nuevo("h3", { textContent: nombre }), dl];
   });
@@ -128,14 +148,14 @@ function ayuda() {
 }
 
 export function iniciarUnaTecla() {
-  try { if (localStorage.getItem(CLAVE) === "no") raiz.dataset.atajos = "no"; } catch { /* modo privado */ }
+  if (leerLocal(CLAVE) === "no") raiz.dataset.atajos = "no";
 }
 
 /** @param {boolean} si */
 export function ponerUnaTecla(si) {
   if (si) delete raiz.dataset.atajos;
   else raiz.dataset.atajos = "no";
-  try { localStorage.setItem(CLAVE, si ? "si" : "no"); } catch { /* modo privado */ }
+  guardarLocal(CLAVE, si ? "si" : "no");
   anotar();
 }
 
@@ -143,7 +163,9 @@ export function ponerUnaTecla(si) {
 export function iniciarAtajos(propios = {}) {
   extra = { "?": { texto: "Ayuda de atajos", accion: ayuda }, ...propios };
   document.addEventListener("keydown", alTeclear);
-  document.addEventListener("pointerdown", () => { if (pendiente.length) reiniciar(); });
+  document.addEventListener("pointerdown", () => {
+    if (pendiente.length) reiniciar();
+  });
   dialogo.addEventListener("command", llenar);
   anotar();
 }

@@ -1,5 +1,12 @@
 // @ts-check
-// Máscaras de 32 bits.
+// Ocupación por día en celdas de 10 min desde las 7:00: 3 palabras de 32 bits
+// (7:00–23:00). Entran las dos rejillas de la UTP (50 y 60 min) sin choques
+// falsos: los inicios caen en múltiplos de 10 y el fin se redondea hacia arriba.
+
+export const CELDA_MIN = 10;
+export const PALABRAS = 3;
+const BASE = 7 * 60;
+const CELDAS = PALABRAS * 32;
 
 /** Popcount (SWAR). @param {number} x */
 export function popcount(x) {
@@ -8,16 +15,54 @@ export function popcount(x) {
   return Math.imul((x + (x >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24;
 }
 
-/** Huecos entre la primera y la última clase. @param {number} mask */
-export function mascaraHuecos(mask) {
-  if (!mask) return 0;
-  const primero = mask & -mask;
-  const ultimo = 1 << (31 - Math.clz32(mask));
-  return ((ultimo - primero) | ultimo) & ~mask;
+/** Bits lo..hi (0–31) encendidos. @param {number} lo @param {number} hi */
+const tramo = (lo, hi) => (-1 >>> (31 - hi)) & (-1 << lo);
+
+/** @param {number} min */
+const celda = (min) => Math.min(CELDAS, Math.max(0, (min - BASE) / CELDA_MIN));
+
+/**
+ * Marca [ini, fin) del día d en masks (7 × PALABRAS).
+ * @param {ArrayLike<number> & {[i: number]: number}} masks @param {number} d @param {number} ini @param {number} fin
+ */
+export function marcar(masks, d, ini, fin) {
+  const a = Math.floor(celda(ini)), b = Math.ceil(celda(fin)) - 1;
+  for (let w = Math.floor(a / 32); w <= Math.floor(b / 32) && w < PALABRAS; w++) {
+    const lo = Math.max(a - w * 32, 0), hi = Math.min(b - w * 32, 31);
+    if (lo <= hi) masks[d * PALABRAS + w] |= tramo(lo, hi);
+  }
 }
 
-/** @param {number} mask */
-export const huecos = (mask) => popcount(mascaraHuecos(mask));
+/**
+ * Celdas libres entre la primera y la última ocupada del día, en `out`
+ * (PALABRAS palabras). Devuelve cuántas son.
+ * @param {ArrayLike<number>} masks @param {number} i0 primera palabra del día
+ * @param {Int32Array | number[]} out
+ */
+export function huecosDia(masks, i0, out) {
+  let primera = -1, ultima = -1;
+  for (let w = 0; w < PALABRAS; w++) {
+    const m = masks[i0 + w];
+    if (!m) continue;
+    if (primera < 0) primera = w * 32 + (31 - Math.clz32(m & -m));
+    ultima = w * 32 + (31 - Math.clz32(m));
+  }
+  let n = 0;
+  for (let w = 0; w < PALABRAS; w++) {
+    const lo = Math.max(primera - w * 32, 0), hi = Math.min(ultima - w * 32, 31);
+    const h = primera >= 0 && lo <= hi ? tramo(lo, hi) & ~masks[i0 + w] : 0;
+    out[w] = h;
+    n += popcount(h);
+  }
+  return n;
+}
 
-/** @param {number} k @param {number} n */
-export const bitsPeriodos = (k, n) => ((1 << n) - 1) << k;
+/** Tramos libres (no celdas) en los huecos del día. @param {ArrayLike<number>} h */
+export function tramosLibres(h) {
+  let n = 0, antes = 0;
+  for (let w = 0; w < PALABRAS; w++) {
+    n += popcount(h[w] & ~((h[w] << 1) | antes));
+    antes = h[w] >>> 31;
+  }
+  return n;
+}

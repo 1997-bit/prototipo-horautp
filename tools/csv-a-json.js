@@ -2,7 +2,7 @@
 // Uso: node tools/csv-a-json.js data/horarios.csv > data/ejemplo.json
 
 import { readFileSync } from "node:fs";
-import { diaIndex, minDesdeTexto, periodoDesdeMin, periodosDesdeDuracion } from "../js/periodos.js";
+import { diaIndex, minDesdeTexto } from "../js/periodos.js";
 
 /** @type {Record<string, string>} */
 const TIPO = { Clase: "C", Lab: "L", "Clase+Lab": "CL" };
@@ -32,10 +32,9 @@ const filas = leerCsv(readFileSync(process.argv[2] ?? "data/horarios.csv", "utf8
 const grupos = new Map();
 for (const f of filas) {
   const ini = minDesdeTexto(f.hora_inicio);
-  const k = periodoDesdeMin(ini);
-  const n = periodosDesdeDuracion(minDesdeTexto(f.hora_fin) - ini);
+  const fin = minDesdeTexto(f.hora_fin);
   const d = diaIndex(f.dia);
-  if (k < 0 || n < 0 || d < 0) throw new Error(`fila fuera de la grilla: ${JSON.stringify(f)}`);
+  if (!(ini < fin) || d < 0) throw new Error(`fila inválida: ${JSON.stringify(f)}`);
 
   let g = grupos.get(f.grupo);
   if (!g) grupos.set(f.grupo, (g = { grupo: f.grupo, periodo: f.periodo, materias: [] }));
@@ -45,7 +44,7 @@ for (const f of filas) {
     m = { codasig: f.codasig, codhora, asignatura: f.asignatura, profesor: f.profesor, email: f.email, bloques: [] };
     g.materias.push(m);
   }
-  m.bloques.push([d, k, n, TIPO[f.tipo] ?? "C", f.aula]);
+  m.bloques.push([d, ini, fin, TIPO[f.tipo] ?? "C", f.aula]);
 }
 
 for (const g of grupos.values()) {
