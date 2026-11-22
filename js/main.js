@@ -1,14 +1,10 @@
 // @ts-check
 
-import { iniciarAgentes } from "./agentes.js";
 import { iniciarAjustes, quieto } from "./ajustes.js";
-import { MAC, iniciarAtajos } from "./atajos.js";
-import { deshacerUltimo, hayDeshacer } from "./deshacer.js";
 import { guardarLocal, leerLocal } from "./dom.js";
 import { cargar, escucharOtrasPestanas } from "./estado.js";
-import { irAOpcion } from "./horario.js";
 import { iniciarDatos } from "./materias.js";
-import { construirSecciones } from "./modelo.js";
+import { FIRME, avanzar, dtEntre } from "./resorte.js";
 import { PASOS, descartar, pasoActual, repintar } from "./ui.js";
 
 // iOS: sin esto no aplica :active
@@ -37,17 +33,14 @@ const estado = cargar();
 /** @type {import("./ui.js").App} */
 const app = {
   estado,
-  secciones: construirSecciones(estado.grupos),
+  secciones: [],
   resultado: null,
   opcion: 0,
   pedido: 0,
   enCurso: 0,
   mostradas: null,
 };
-
-// Enlaces viejos
-/** @type {Record<string, string>} */
-const ANTES = { datos: "materias", preferencias: "opciones" };
+descartar(app);
 
 const ORDEN = Object.keys(PASOS);
 const ULTIMO = "horautp:paso";
@@ -56,7 +49,6 @@ const pasos = /** @type {HTMLElement} */ (document.getElementById("pasos"));
 // Píldora: un resorte por borde. Elemento real, no ::before: Safari no lo repintaba.
 const pildora = /** @type {HTMLElement} */ (pasos.querySelector(".pildora"));
 const enlaces = /** @type {HTMLElement[]} */ ([...pasos.querySelectorAll("a")]);
-const FIRME = { k: 520, c: 38 };
 const BLANDO = { k: 240, c: 27 };
 const borde = () => ({ x: 0, v: 0, meta: 0, ...FIRME });
 const izq = borde(), der = borde();
@@ -76,15 +68,9 @@ function pintar() {
 
 /** @param {number} t */
 function animar(t) {
-  const dt = Math.min(0.064, (t - ultimo) / 1000);
+  const dt = dtEntre(ultimo, t);
   ultimo = t;
-  const n = Math.max(1, Math.ceil(dt / 0.004)), h = dt / n;
-  for (const b of [izq, der]) {
-    for (let k = 0; k < n; k++) {
-      b.v += (-b.k * (b.x - b.meta) - b.c * b.v) * h;
-      b.x += b.v * h;
-    }
-  }
+  for (const b of [izq, der]) avanzar(b, dt);
   const quieta = [izq, der].every((b) => Math.abs(b.x - b.meta) < 0.3 && Math.abs(b.v) < 5);
   if (quieta) for (const b of [izq, der]) { b.x = b.meta; b.v = 0; }
   pintar();
@@ -122,11 +108,6 @@ new ResizeObserver(() => {
 }).observe(pasos);
 
 function rutear() {
-  const id = location.hash.slice(1);
-  if (id in ANTES) {
-    history.replaceState(null, "", `#${ANTES[id]}`);
-    return rutear();
-  }
   const paso = pasoActual();
   guardarLocal(ULTIMO, paso);
   for (const s of document.querySelectorAll("main > section")) s.toggleAttribute("hidden", s.id !== paso);
@@ -140,16 +121,8 @@ function rutear() {
   scrollTo(0, 0);
 }
 
-const enOpciones = () => location.hash === "#opciones" && !document.activeElement?.closest(".carrusel");
-// En un campo de texto, Ctrl+Z deshace lo escrito.
-const escribiendo = () => !!document.activeElement?.matches("textarea, input:not([type=checkbox], [type=radio])");
-iniciarAtajos({
-  ArrowLeft: { texto: "Opción anterior", si: enOpciones, accion: () => irAOpcion(app, app.opcion - 1) },
-  ArrowRight: { texto: "Opción siguiente", si: enOpciones, accion: () => irAOpcion(app, app.opcion + 1) },
-  "Mod+z": { texto: "Deshacer", si: () => hayDeshacer() && !escribiendo(), accion: deshacerUltimo },
-});
-
-if (MAC) {
+const plataforma = /** @type {any} */ (navigator).userAgentData?.platform ?? navigator.userAgent;
+if (/mac|iphone|ipad/i.test(plataforma)) {
   const pegar = /** @type {HTMLTextAreaElement} */ (document.getElementById("pegar"));
   pegar.placeholder = pegar.placeholder.replaceAll("Ctrl+", "⌘");
 }
@@ -163,7 +136,6 @@ if ("serviceWorker" in navigator) {
 }
 
 iniciarDatos(app);
-iniciarAgentes(app);
 // Volver al último paso, con los anteriores en el historial.
 const ultimoPaso = leerLocal(ULTIMO);
 if (!location.hash && estado.grupos.length && ultimoPaso && ultimoPaso in PASOS) {

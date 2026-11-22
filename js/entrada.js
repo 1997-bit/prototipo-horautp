@@ -1,8 +1,8 @@
 // @ts-check
 // "Horario del Grupo" del portal → Grupo. DOM → Crudo → Grupo (puro).
 
-import { migrarGrupos } from "./modelo.js";
-import { DIAS, diaIndex, limpio, normalizar, rangoDesdeTexto } from "./periodos.js";
+import { porHora } from "./modelo.js";
+import { DIAS, clave, diaIndex, limpio, normalizar, rangoDesdeTexto } from "./periodos.js";
 
 /**
  * @typedef {import("./modelo.js").Grupo} Grupo
@@ -13,7 +13,7 @@ import { DIAS, diaIndex, limpio, normalizar, rangoDesdeTexto } from "./periodos.
 // ---------- DOM (navegador) ----------
 
 // Separa las clases de una celda (un <p> por clase: subgrupos, otra materia).
-export const SEPARADOR = "¶";
+const SEPARADOR = "¶";
 
 /** Cloudflare: el primer byte es la clave XOR del resto. @param {string} hex */
 function cfemail(hex) {
@@ -64,7 +64,7 @@ function textoPagina(doc) {
 }
 
 /** @param {Document} doc @returns {Crudo} */
-export function crudoDesdeDocumento(doc) {
+function crudoDesdeDocumento(doc) {
   return {
     texto: textoPagina(doc),
     tablas: [...doc.querySelectorAll("table")].map((t) => matriz(/** @type {HTMLTableElement} */ (t))),
@@ -95,13 +95,9 @@ const RE_CL = /\(\s*C\s*\+\s*L\s*\)/i;
 const RE_L = /\(\s*L\s*\)/i;
 const RE_PARENTESIS_FINAL = /\([^)]*\)\s*$/;
 const RE_SUBGRUPO = /\(\s*([A-F])\s*\)\s*$/i;
-const RE_NO_CLAVE = /[^A-Z0-9]/g;
 const RE_SALTOS = /\n/g;
 const RE_ENTERO = /^\d+$/;
 const RE_ESPACIO = /\s/g;
-
-/** @param {string} s */
-const clave = (s) => normalizar(s).replace(RE_NO_CLAVE, "");
 
 /**
  * "ESTRUCT.DATOS I(L )\naula 4fis" → {nombre, tipo, aula}
@@ -168,10 +164,12 @@ function leerLeyenda(t) {
   const [cAsig, cCodasig, cCodhora, cProf, cEmail] = [
     col("ASIGNATURA"), col("CODASIG"), col("CODHORA"), col("PROFESOR"), col("EMAIL", "CORREO"),
   ];
+  // Sin nombres, la grilla no se puede unir a la leyenda.
+  if (cAsig < 0) throw new Error("La tabla de asignaturas no tiene la columna ASIGNATURA.");
   return t.slice(iCab + 1)
-    .filter((f) => RE_ENTERO.test(f[cCodhora]?.trim() ?? ""))
+    .filter((f) => RE_ENTERO.test(f[cCodhora]?.trim() ?? "") && limpio(f[cAsig] ?? ""))
     .map((f) => ({
-      codasig: f[cCodasig].trim(),
+      codasig: (f[cCodasig] ?? "").trim(),
       codhora: Number(f[cCodhora]),
       asignatura: limpio(f[cAsig]),
       profesor: limpio(f[cProf] ?? ""),
@@ -190,10 +188,11 @@ function leerGrilla(t, materias) {
   /** @param {string} nombre */
   const buscar = (nombre) => {
     const c = clave(nombre);
-    const m = porClave.get(c) ?? materias.find((x) => {
+    // Vacío: startsWith("") uniría con cualquiera.
+    const m = c && (porClave.get(c) ?? materias.find((x) => {
       const cx = clave(x.asignatura);
       return cx.startsWith(c) || c.startsWith(cx);
-    });
+    }));
     if (!m) throw new Error(`"${nombre}" no aparece en la tabla de asignaturas`);
     return m;
   };
@@ -240,7 +239,7 @@ export function grupoDesdeCrudo(crudo) {
   const materias = leerLeyenda(leyenda);
   if (!materias.length) throw new Error("La tabla de asignaturas está vacía.");
   leerGrilla(grilla, materias);
-  for (const m of materias) m.bloques.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  for (const m of materias) m.bloques.sort(porHora);
 
   const texto = normalizar(crudo.texto);
   const crudoLimpio = limpio(crudo.texto);
@@ -265,7 +264,7 @@ export function gruposDesdeJson(datos) {
       throw new Error("El JSON no tiene el formato de grupo esperado.");
     }
   }
-  return migrarGrupos(lista);
+  return lista;
 }
 
 /**
@@ -282,7 +281,7 @@ export function grupoManual(datos, grupos) {
   if (!asignatura) throw new Error("Escribe el nombre de la materia.");
   if (!datos.bloques.length) throw new Error("Agrega al menos un día de clase.");
 
-  const bloques = [...datos.bloques].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const bloques = [...datos.bloques].sort(porHora);
   for (let i = 1; i < bloques.length; i++) {
     const [d, ini] = bloques[i], [dp, , finPrevio] = bloques[i - 1];
     if (d === dp && ini < finPrevio) throw new Error(`Dos horas del ${DIAS[d].toLowerCase()} se pisan.`);

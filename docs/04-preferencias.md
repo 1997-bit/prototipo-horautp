@@ -6,9 +6,7 @@ Código: `js/preferencias.js` y `candidatas` en `js/solver.js`.
 
 | Campo | Tipo | Efecto |
 |---|---|---|
-| `horario` | `"manana"`, `"tarde"` o `"noche"` | Turno preferido. Suma penalidad. |
-| `soloTurno` | boolean | Quita las secciones fuera del turno. |
-| `menosDias` | boolean | Suma penalidad por cada día de clase después del primero. |
+| `dias` | 0, 1, 2 o 3 | Nivel de "menos días". Suma penalidad por cada día de clase después del primero. 0 = sin penalidad. La pantalla usa 0 y 2. |
 | `solo` | `{codasig: [profesor]}` | En esa materia, deja solo esos profesores. |
 | `evitados` | `[profesor]` | Quita las secciones de esos profesores en todas las materias. |
 | `fijas` | `[codhora]` | En su materia, deja solo esas secciones. |
@@ -22,19 +20,16 @@ Código: `js/preferencias.js` y `candidatas` en `js/solver.js`.
 2. Si `s.profesor` está en `evitados`, la sección queda fuera.
 3. Si `s.codhora` está en `fijas`, la sección queda dentro.
 4. Si la materia tiene una lista `solo` y el profesor no está en ella, la sección queda fuera.
-5. Si `soloTurno` está activo y la sección no cumple `horario`, la sección queda fuera.
-6. En otro caso, la sección queda dentro.
+5. En otro caso, la sección queda dentro.
 
-Una sección fija queda dentro aunque no cumpla los pasos 4 y 5.
+Una sección fija queda dentro aunque no cumpla el paso 4.
 
 ## 4.3 Candidatas
 
-`candidatas(secciones, requeridas, prefs)` da, para cada materia requerida, una lista de `{s, p}`:
+`candidatas(secciones, requeridas, prefs)` da, para cada materia requerida, una lista de secciones:
 
 1. Toma las secciones de la materia que no están descartadas.
-2. Calcula $p = \text{penalSeccion}(s)$.
-3. Si alguna sección de la lista es fija, deja solo las fijas.
-4. Ordena la lista por $p$, de menor a mayor.
+2. Si alguna sección de la lista es fija, deja solo las fijas.
 
 Las secciones fijas comparan el C.HORA. Por eso, si fijas un C.HORA con subgrupos, todos sus subgrupos quedan como candidatas.
 
@@ -42,21 +37,17 @@ Las secciones fijas comparan el C.HORA. Por eso, si fijas un C.HORA con subgrupo
 
 | Peso | Valor | Se suma por |
 |---|---|---|
-| `horario` | 10 | cada sección que no cumple el turno preferido |
-| `dias` | 20 | cada día de clase después del primero, si `menosDias` está activo |
-| `hueco` | 1 | cada unidad libre de 10 minutos ([Huecos](02-tiempo.md#25-huecos)) |
+| `dias` | $w_d$ = 0, 5, 20 o 60, según el nivel `dias` | cada día de clase después del primero |
+| `hueco` | 1 | cada unidad libre de 10 minutos ([Huecos](02-tiempo.md#24-huecos)) |
 
 $$
-\text{penalSeccion}(s) = \begin{cases} 10 & \text{si hay } \texttt{horario} \text{ y } s \text{ no lo cumple} \\ 0 & \text{otro caso} \end{cases}
-$$
-
-$$
-P(\text{opción}) = \sum_{s} \text{penalSeccion}(s) \;+\; 20 \cdot \max(0,\ |D| - 1) \cdot [\texttt{menosDias}] \;+\; 1 \cdot U
+P(\text{opción}) = w_d \cdot \max(0,\ |D| - 1) \;+\; 1 \cdot U
 $$
 
 - $D$ es el conjunto de días con clase. Es la unión de `s.dias`.
+- $w_d$ es `pesoDias(prefs)`. El interruptor "Ir menos días" pone el nivel 2. La pantalla no muestra $w_d$.
 - $U$ es la cantidad de unidades libres de la semana. El motor une las `masks` de todas las secciones con OR y aplica `huecosDia` a cada día.
 
-Un período libre de 50 minutos vale 5 unidades. Así, la penalidad es igual a la del modelo viejo, con 5 por período.
+Un período libre de 50 minutos vale 5 unidades. Con el nivel 1, un día de clase vale lo mismo que un período libre.
 
-`penalidad(secciones, prefs)` calcula $P$ fuera del solver. Para la misma opción, el resultado es igual al del solver.
+`costo(nDias, U, w_d)` es la única fórmula de $P$. `penalidad(secciones, prefs)` la usa fuera del solver. El solver la usa en la hoja y en la cota.

@@ -33,6 +33,9 @@ export function enfocar(contenedor, foco, opciones) {
   /** @type {HTMLElement | null} */ (el)?.focus(opciones);
 }
 
+/** "1 materia", "3 materias". @param {number} n @param {string} uno @param {string} varios */
+export const contar = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
 /** @param {Event} e */
 export const marcado = (e) => /** @type {HTMLInputElement} */ (e.target).checked;
 

@@ -42,9 +42,7 @@ export function conDeshacer(app, texto, hacer) {
   correrPlazo();
 }
 
-export const hayDeshacer = () => deshacer !== null;
-
-export function deshacerUltimo() {
+function deshacerUltimo() {
   const d = deshacer;
   cerrarAviso();
   d?.();

@@ -1,15 +1,14 @@
-// Offline, stale-while-revalidate.
+// Red primero: con internet siempre la versión nueva; sin red (o lenta), la
+// copia guardada. Las peticiones saltan el caché HTTP: si no, GitHub Pages
+// (max-age=600) daría archivos viejos aunque el SW sea nuevo.
 
-const CACHE = "horautp-v41";
+const CACHE = "horautp-v49";
 const ORIGEN = `${location.origin}/`;
 const ARCHIVOS = [
   "./",
   "index.html",
-  "manifest.webmanifest",
   "css/style.css",
-  "js/agentes.js",
   "js/ajustes.js",
-  "js/atajos.js",
   "js/bits.js",
   "js/busqueda.js",
   "js/calendario.js",
@@ -21,22 +20,24 @@ const ARCHIVOS = [
   "js/estado.js",
   "js/filtros.js",
   "js/horario.js",
+  "js/inspector.js",
   "js/main.js",
   "js/manual.js",
   "js/materias.js",
   "js/modelo.js",
   "js/periodos.js",
   "js/preferencias.js",
+  "js/resorte.js",
   "js/solver.js",
   "js/tema.js",
   "js/ui.js",
-  "js/vendor/webmcp-polyfill.js",
   "js/worker.js",
   "data/ejemplo.json",
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ARCHIVOS)).then(() => self.skipWaiting()));
+  const frescos = ARCHIVOS.map((u) => new Request(u, { cache: "reload" }));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(frescos)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (e) => {
@@ -47,14 +48,25 @@ self.addEventListener("activate", (e) => {
   );
 });
 
+// Con red lenta, la copia guardada pasado este tiempo.
+const ESPERA_RED = 3000;
+
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET" || !req.url.startsWith(ORIGEN)) return;
-  const red = fetch(req);
-  e.waitUntil(red.then((res) => {
-    if (!res.ok) return;
-    const copia = res.clone();
-    return caches.open(CACHE).then((c) => c.put(req, copia));
-  }).catch(() => {}));
-  e.respondWith(caches.match(req, { ignoreSearch: true }).then((r) => r ?? red).catch(() => Response.error()));
+  // no-cache: pregunta al servidor (304 si no cambió), nunca usa el caché HTTP sin preguntar
+  const red = fetch(req, { cache: "no-cache" }).then((res) => {
+    if (res.ok) {
+      const copia = res.clone();
+      e.waitUntil(caches.open(CACHE).then((c) => c.put(req, copia)));
+    }
+    return res;
+  });
+  const guardada = () => caches.match(req, { ignoreSearch: true });
+  const lenta = new Promise((listo) => { setTimeout(listo, ESPERA_RED); }).then(guardada);
+  e.respondWith(
+    Promise.race([red, lenta.then((r) => r ?? red)])
+      .catch(() => guardada().then((r) => r ?? Response.error())),
+  );
+  e.waitUntil(red.catch(() => {}));
 });

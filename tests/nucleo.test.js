@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { PALABRAS, huecosDia, marcar, tramosLibres } from "../js/bits.js";
-import { chocan, construirSecciones, listarMaterias, migrarGrupos, sigla } from "../js/modelo.js";
-import { franjaDe, finMin, formatoHora, inicioMin, minDesdeTexto, rangoDesdeTexto, usar24 } from "../js/periodos.js";
+import { chocan, construirSecciones, listarMaterias, sigla } from "../js/modelo.js";
+import { finMin, formatoHora, inicioMin, minDesdeTexto, rangoDesdeTexto, usar24 } from "../js/periodos.js";
 import { resolver } from "../js/solver.js";
 import { descartada } from "../js/preferencias.js";
 import { bruta, sinteticos, sinteticosMixtos } from "./bruta.js";
 
-const grupos = JSON.parse(readFileSync(new URL("../data/ejemplo.json", import.meta.url), "utf8"));
+const grupos = JSON.parse(readFileSync(new URL("datos.json", import.meta.url), "utf8"));
 const secciones = construirSecciones(grupos);
 const todas = listarMaterias(secciones).map((m) => m.codasig);
 
@@ -29,8 +29,6 @@ test("horas del portal", () => {
   assert.equal(formatoHora(finMin(13, 2)), "19:25");
   assert.equal(formatoHora(420), "7:00");
   usar24(false);
-  assert.deepEqual([0, 6, 7, 11, 12, 18].map((k) => franjaDe(inicioMin(k))), ["manana", "manana", "tarde", "tarde", "noche", "noche"]);
-  assert.deepEqual(["1:00 PM", "4:00 PM", "5:00 PM", "6:00 PM"].map((t) => franjaDe(minDesdeTexto(t))), ["tarde", "tarde", "noche", "noche"]);
 });
 
 test("celdas de 10 min: las dos rejillas encajan sin choques falsos", () => {
@@ -61,10 +59,11 @@ test("celdas de 10 min: las dos rejillas encajan sin choques falsos", () => {
   assert.equal(tramosLibres(h), 2);
 });
 
-test("bloques en períodos (formato anterior) se pasan a minutos", () => {
-  const [g] = migrarGrupos([{ grupo: "X", periodo: "", materias: [{ codasig: "A", codhora: 1, asignatura: "A", profesor: "", email: "",
-    bloques: [[0, 13, 2, "L", "3-401"], [2, 1070, 1165, "C", ""]] }] }]);
-  assert.deepEqual(g.materias[0].bloques, [[0, 1070, 1165, "L", "3-401"], [2, 1070, 1165, "C", ""]]);
+test("clases antes de las 7:00 y después de las 23:00 chocan", () => {
+  const m = (g, codhora, ini, fin) => ({ grupo: g, periodo: "", materias: [{ codasig: g, codhora, asignatura: g, profesor: "", email: "", bloques: [[5, ini, fin, "C", ""]] }] });
+  const secs = construirSecciones([m("A", 1, 360, 415), m("B", 2, 360, 415), m("C", 3, 1380, 1435), m("D", 4, 1380, 1435)]);
+  assert.equal(chocan(secs[0], secs[1]), true);
+  assert.equal(chocan(secs[2], secs[3]), true);
 });
 
 test("subgrupos: una sección por subgrupo, con la teoría", () => {
@@ -79,9 +78,9 @@ test("subgrupos: una sección por subgrupo, con la teoría", () => {
 
 const casos = [
   ["sin preferencias", {}],
-  ["turno", { horario: "noche" }],
-  ["menos días", { menosDias: true }],
-  ["todo", { menosDias: true, horario: "tarde" }],
+  ["algo menos días", { dias: 1 }],
+  ["menos días", { dias: 2 }],
+  ["todo", { dias: 3, excluidas: [2600] }],
 ];
 
 for (const [nombre, prefs] of casos) {
@@ -132,13 +131,14 @@ test("sin solución explica qué materias chocan", () => {
 const PREFS_AZAR = [
   {},
   {},
-  { menosDias: true },
-  { horario: "noche" },
-  { horario: "manana", menosDias: true },
+  { dias: 2 },
+  { dias: 1 },
+  { dias: 2, evitados: ["P1"] },
+  { dias: 3 },
   { solo: { M0: ["P1"], M1: ["P2", "P3"] }, evitados: ["P0"] },
-  { horario: "tarde", soloTurno: true, menosDias: true },
+  { solo: { M2: ["P0"] }, dias: 3 },
 ];
-test("solver = fuerza bruta en 350 instancias aleatorias", () => {
+test("solver = fuerza bruta en 400 instancias aleatorias", () => {
   let casos = 0;
   for (let semilla = 1; semilla <= 50; semilla++) {
     const sec = construirSecciones(sinteticos(4 + (semilla % 2), 3 + (semilla % 3), semilla));
@@ -151,10 +151,10 @@ test("solver = fuerza bruta en 350 instancias aleatorias", () => {
       casos++;
     }
   }
-  assert.equal(casos, 350);
+  assert.equal(casos, 400);
 });
 
-test("solver = fuerza bruta con horas de 55 min y subgrupos (210 instancias)", () => {
+test("solver = fuerza bruta con horas de 55 min y subgrupos (240 instancias)", () => {
   let casos = 0;
   for (let semilla = 1; semilla <= 30; semilla++) {
     const sec = construirSecciones(sinteticosMixtos(4 + (semilla % 2), 3 + (semilla % 3), semilla));
@@ -168,17 +168,7 @@ test("solver = fuerza bruta con horas de 55 min y subgrupos (210 instancias)", (
       casos++;
     }
   }
-  assert.equal(casos, 210);
-});
-
-test("solo un turno: descarta las demás franjas, salvo las fijas", () => {
-  const prefs = { horario: "noche", soloTurno: true };
-  const r = resolver(secciones, todas, prefs, 1000);
-  const fuera = secciones.filter((s) => todas.includes(s.codasig) && descartada(s, prefs));
-  assert.ok(fuera.length > 0);
-  for (const o of r.opciones) for (const s of o.secciones) assert.ok(!descartada(s, prefs));
-  const fija = fuera[0];
-  assert.equal(descartada(fija, { ...prefs, fijas: [fija.codhora] }), false);
+  assert.equal(casos, 240);
 });
 
 test("materia sin secciones", () => {
@@ -215,18 +205,9 @@ test("lo quiero: solo ese profesor en esa materia; una fija igual entra", () => 
   assert.equal(descartada(/** @type {any} */ (sec(4, "B", "PEREZ")), prefs), false);
 });
 
-test("preferencias guardadas por versiones anteriores", async () => {
-  const { migrar } = await import("../js/estado.js");
-  assert.deepEqual(migrar({
-    materias: { A: { profesor: "PEREZ", solo: ["ZURITA"] }, B: { horario: "noche" } },
-    diasMax: 3, unGrupo: true, evitarHuecos: true, pesos: { hueco: 1 }, fijas: [1],
-  }), { solo: { A: ["ZURITA", "PEREZ"] }, horario: "noche", menosDias: true, fijas: [1] });
-  assert.deepEqual(migrar({ horario: "tarde", solo: { A: ["X"] } }), { horario: "tarde", solo: { A: ["X"] } });
-});
-
 test("penalidad() da lo mismo que el solver", async () => {
   const { penalidad } = await import("../js/preferencias.js");
-  for (const prefs of [{}, { horario: "noche", menosDias: true }]) {
+  for (const prefs of [{}, { dias: 2, excluidas: [2600] }, { dias: 1 }, { dias: 3 }]) {
     for (const o of resolver(secciones, todas, prefs, 200).opciones) assert.equal(penalidad(o.secciones, prefs), o.penalidad);
   }
 });
@@ -234,7 +215,7 @@ test("penalidad() da lo mismo que el solver", async () => {
 test("plan B: reemplazos que encajan sin mover nada más, de mejor a peor", async () => {
   const { reemplazos } = await import("../js/solver.js");
   const { penalidad } = await import("../js/preferencias.js");
-  const prefs = { horario: "noche", excluidas: [2600] };
+  const prefs = { dias: 2, excluidas: [2600] };
   const [o] = resolver(secciones, todas, prefs).opciones;
   const planes = reemplazos(secciones, structuredClone(o.secciones), prefs);
   assert.equal(planes.size, o.secciones.length);
@@ -275,4 +256,12 @@ test("en el mismo grupo lo que se pisa en el horario oficial no choca", () => {
   assert.equal(resolver(propio, ["GE", "IP"]).estado, "OK");
   const mezclado = construirSecciones([{ grupo: "A", periodo: "", materias: [m("GE", 1)] }, { grupo: "B", periodo: "", materias: [m("IP", 2)] }]);
   assert.equal(resolver(mezclado, ["GE", "IP"]).estado, "SIN_SOLUCION");
+});
+
+test("en el mismo grupo, misma hora en aulas distintas choca", () => {
+  // 1GS134: SO Lab y Redes Clase el martes a las 3:20.
+  const m = (codasig, codhora, aula) => ({ codasig, codhora, asignatura: codasig, profesor: "", email: "", bloques: [[1, 920, 1015, "L", aula]] });
+  const secs = construirSecciones([{ grupo: "1GS134", periodo: "", materias: [m("SO", 2672, "3-408"), m("RC", 2670, "3-315")] }]);
+  assert.equal(chocan(secs[0], secs[1]), true);
+  assert.equal(resolver(secs, ["SO", "RC"]).estado, "SIN_SOLUCION");
 });

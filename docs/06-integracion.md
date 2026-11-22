@@ -1,6 +1,6 @@
 # 6. Integración
 
-Código: `js/estado.js`, `js/busqueda.js`, `js/worker.js` y `js/agentes.js`.
+Código: `js/estado.js`, `js/busqueda.js` y `js/worker.js`.
 
 ## 6.1 Estado guardado
 
@@ -14,11 +14,7 @@ type Estado = {
 };
 ```
 
-Al leer el estado:
-
-1. Si el valor no es válido, usa un estado vacío.
-2. Cambia los bloques del formato viejo con `migrarGrupos` ([Formato viejo](03-modelo.md#32-formato-viejo)).
-3. Cambia las preferencias viejas con `migrar`.
+Al leer el estado, si el valor no es válido, la app usa un estado vacío. La app no convierte formatos viejos.
 
 Al agregar un grupo del portal, la app quita el grupo que tiene el mismo código. Las materias del grupo nuevo quedan como requeridas.
 
@@ -46,28 +42,11 @@ sequenceDiagram
 - Un pedido nuevo detiene el Worker anterior.
 - El Worker recibe una copia de las secciones. Por eso `chocan` usa los campos `grupo`, `sub` y `codhora`, y no la identidad del objeto.
 
-## 6.3 Agentes
-
-La app registra estas herramientas con WebMCP (`document.modelContext`). Si el navegador no tiene WebMCP, están en `window.horautp.<nombre>(entrada)`.
-
-| Herramienta | Entrada | Resultado |
-|---|---|---|
-| `cargar_horario` | `{html}` o `{json}` | Estado |
-| `ver_estado` | — | Grupos, materias con sus secciones y preferencias |
-| `elegir_materias` | `{codasig: string[]}` | Estado |
-| `ajustar_preferencias` | `turno`, `solo_turno`, `menos_dias`, `profesores_solo`, `profesores_evitados`, `fijas`, `excluidas` | Estado |
-| `ver_horarios` | `{cuantas}` (1 a 50) | Opciones con `c_hora`, `subgrupo` y `plan_b` |
-| `mostrar_horario` | `{numero}` | Muestra esa opción en la pantalla |
-
-Cada sección del resultado tiene:
-
-- `clases`: un texto por bloque, por ejemplo `Lunes · 5:00pm–8:15pm · subgrupo A · 1-220`.
-- `subgrupo`: solo si la sección tiene letra.
-
-## 6.4 Archivos de datos
+## 6.3 Archivos de datos
 
 | Archivo | Contenido |
 |---|---|
-| `data/horarios.csv` | Una fila por bloque: grupo, período, C.ASIG, asignatura, C.HORA, profesor, correo, día, hora de inicio, hora de fin, tipo, aula. |
-| `data/ejemplo.json` | Los mismos datos como `Grupo[]`, con bloques en minutos. |
-| `tools/csv-a-json.js` | Convierte el CSV en el JSON: `node tools/csv-a-json.js data/horarios.csv > data/ejemplo.json`. |
+| `data/ejemplo.json` | El botón "Ejemplo". 12 grupos de Ing. Electromecánica de Panamá del scrape de noviembre de 2026, como `Grupo[]`. Un estudiante en IV año II semestre (Teoría de Control II, Sistemas de Potencia, Ética Profesional, Ciencias de los Materiales II) con 4 materias atrasadas: Mecánica de Fluidos II, Circuitos Lógicos, Tecnología Eléctrica y Métodos Numéricos. Las atrasadas no son requisito de ninguna materia hasta IV año. Todas las materias tienen 3 a 5 C.HORA en mañana, tarde o noche, y casi todas tienen subgrupos. No hay secciones sin profesor. Hay 4519 opciones de 3 317 760 combinaciones. |
+| `tests/datos.csv` | Datos de prueba: 5 grupos. Una fila por bloque: grupo, período, C.ASIG, asignatura, C.HORA, profesor, correo, día, hora de inicio, hora de fin, tipo, aula. |
+| `tests/datos.json` | Los mismos datos como `Grupo[]`, con bloques en minutos. |
+| `tools/csv-a-json.js` | Convierte el CSV en el JSON: `node tools/csv-a-json.js tests/datos.csv > tests/datos.json`. |

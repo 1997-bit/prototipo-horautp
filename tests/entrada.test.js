@@ -70,6 +70,16 @@ test("celda que no está en la leyenda", () => {
   assert.throws(() => grupoDesdeCrudo(malo), /QUIMICA/);
 });
 
+test("leyenda sin ASIGNATURA o con filas cortas", () => {
+  const sinNombre = structuredClone(crudo);
+  sinNombre.tablas[1][0][0] = "MATERIA";
+  assert.throws(() => grupoDesdeCrudo(sinNombre), /ASIGNATURA/);
+
+  const corta = structuredClone(crudo);
+  corta.tablas[1].push(["", "", "9999"]);
+  assert.equal(grupoDesdeCrudo(corta).materias.length, crudo.tablas[1].length - 1);
+});
+
 // "Horarios de Grupos" 1LB421: con botones de grupos antes del horario.
 const LAB = (n, aula = "TD-4") => `${n}(L )\naula ${aula}`;
 const nocturno = {

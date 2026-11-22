@@ -1,9 +1,8 @@
 // @ts-check
 // Ajustes del dispositivo, como data-* en <html>.
 
-import { iniciarUnaTecla, ponerUnaTecla, unaTecla } from "./atajos.js";
 import { usar24 } from "./periodos.js";
-import { guardarLocal, h, leerLocal, marcado } from "./dom.js";
+import { guardarLocal, h, leerLocal, llenar, marcado } from "./dom.js";
 
 const raiz = document.documentElement;
 
@@ -107,12 +106,27 @@ function poner(a, v) {
   a.aplicar?.(v);
 }
 
+/** Sección abierta del acordeón; al abrir el diálogo vuelve a esa. */
+let abierta = AJUSTES[0].leyenda;
+
+/**
+ * Una sola abierta a la vez (details con name).
+ * @param {string} titulo @param {...any} cuerpo
+ */
+const seccion = (titulo, ...cuerpo) => h("details", {
+  class: "ajuste",
+  name: "ajustes",
+  open: titulo === abierta,
+  ontoggle: (/** @type {Event} */ e) => {
+    if (/** @type {HTMLDetailsElement} */ (e.target).open) abierta = titulo;
+  },
+}, h("summary", {}, titulo), h("div", { class: "ajuste-cuerpo" }, cuerpo));
+
 /** @param {Ajuste} a */
 function grupo(a) {
   const actual = raiz.dataset[a.dato];
-  return h("fieldset", { class: "ajuste" },
-    h("legend", {}, a.leyenda),
-    h("div", { class: `vistas vistas-${a.opciones.length}` },
+  return seccion(a.leyenda,
+    h("div", { class: `vistas vistas-${a.opciones.length}`, role: "radiogroup", "aria-label": a.leyenda },
       a.opciones.map(([v, nombre, texto, svg]) => {
         const dibujo = h("span", { class: `mini mini-${a.dato}`, "aria-hidden": "true" });
         dibujo.innerHTML = `<svg viewBox="0 0 84 56">${svg}</svg>`;
@@ -156,24 +170,19 @@ const interruptor = (nombre, si, alCambiar, fijo) => h("label", { class: "ajuste
     onchange: (/** @type {Event} */ e) => alCambiar(marcado(e)),
   }));
 
-const conTeclado = matchMedia("(hover: hover) and (pointer: fine)");
-
-function movimientoYTeclado() {
-  return h("fieldset", { class: "ajuste" },
-    h("legend", {}, conTeclado.matches ? "Movimiento y teclado" : "Movimiento"),
+function movimiento() {
+  return seccion("Movimiento",
     interruptor("Reducir movimiento", quieto(), (si) => {
       reducir(si);
       guardarLocal(MOVIMIENTO, si ? "reducido" : "normal");
-    }, sistemaQuieto.matches ? "Tu dispositivo ya lo pide" : undefined),
-    conTeclado.matches && interruptor("Atajos de una tecla", unaTecla(), ponerUnaTecla));
+    }, sistemaQuieto.matches ? "Tu dispositivo ya lo pide" : undefined));
 }
 
-function llenar() {
-  document.getElementById("contenido-ajustes")?.replaceChildren(
+function llenarAjustes() {
+  llenar("contenido-ajustes",
     ...AJUSTES.map(grupo),
-    movimientoYTeclado(),
-    h("fieldset", { class: "ajuste" },
-      h("legend", {}, "Datos"),
+    movimiento(),
+    seccion("Datos",
       h("div", { class: "ajuste-fila" },
         h("span", {}, "Borrar datos"),
         h("button", {
@@ -184,10 +193,10 @@ function llenar() {
         }, "Borrar…"))));
 }
 
-const DEL_DISPOSITIVO = [...AJUSTES.map((a) => a.clave), MOVIMIENTO, "horautp:atajos"];
+const DEL_DISPOSITIVO = [...AJUSTES.map((a) => a.clave), MOVIMIENTO];
 
 /** Los ajustes se quedan. */
-export function borrarGuardado() {
+function borrarGuardado() {
   try {
     for (const k of Object.keys(localStorage)) {
       if (k.startsWith("horautp:") && !DEL_DISPOSITIVO.includes(k)) localStorage.removeItem(k);
@@ -236,8 +245,7 @@ document.addEventListener("pointerdown", (e) => {
 export function iniciarAjustes() {
   for (const a of AJUSTES) poner(a, leerLocal(a.clave) ?? a.opciones[0][0]);
   reducir(leerLocal(MOVIMIENTO) === "reducido");
-  iniciarUnaTecla();
-  document.getElementById("dialogo-ajustes")?.addEventListener("command", llenar);
+  document.getElementById("dialogo-ajustes")?.addEventListener("command", llenarAjustes);
   const borrar = /** @type {HTMLDialogElement} */ (document.getElementById("dialogo-borrar"));
   borrar.addEventListener("close", () => {
     if (borrar.returnValue === "borrar") borrarDatos();

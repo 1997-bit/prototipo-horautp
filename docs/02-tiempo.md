@@ -17,7 +17,7 @@ $$
 \text{inicioMin}(k) = 420 + 50k \qquad \text{finMin}(k, n) = \text{inicioMin}(k + n - 1) + 45
 $$
 
-El motor usa `inicioMin` y `finMin` solo en el formulario a mano, en el formato viejo y en los nombres de los turnos.
+El motor usa `inicioMin` y `finMin` solo en el formulario a mano y en el formato viejo.
 
 ## 2.2 Hora de una fila
 
@@ -49,33 +49,19 @@ Si el texto no tiene hora, el resultado es `NaN`.
 | `05:50:00 PM` | `[1070, 1115]` |
 | `HORA` | `null` |
 
-## 2.3 Turnos
+## 2.3 Unidades de 10 minutos
 
-El inicio de un bloque da su turno:
-
-$$
-\text{turno}(t) = \begin{cases}
-\text{mañana} & t < 770 \quad (\text{antes de } 12{:}50) \\
-\text{tarde} & 770 \le t < 1020 \quad (\text{antes de } 5{:}00\text{pm}) \\
-\text{noche} & t \ge 1020
-\end{cases}
-$$
-
-Una sección cumple un turno si todos sus bloques empiezan en ese turno.
-
-## 2.4 Unidades de 10 minutos
-
-El motor divide cada día en 96 unidades de 10 minutos, de 7:00 a 23:00. Guarda las unidades en 3 números de 32 bits por día. Una sección tiene $7 \times 3 = 21$ números. El número del día $d$ y la parte $w$ está en la posición $3d + w$.
+El motor divide cada día en 144 unidades de 10 minutos, de 0:00 a 24:00. Guarda las unidades en 5 números de 32 bits por día. Una sección tiene $7 \times 5 = 35$ números. El número del día $d$ y la parte $w$ está en la posición $5d + w$.
 
 ```mermaid
 flowchart LR
-  W0["parte 0<br/>unidades 0–31<br/>7:00–12:20"] --- W1["parte 1<br/>unidades 32–63<br/>12:20–5:40pm"] --- W2["parte 2<br/>unidades 64–95<br/>5:40pm–11:00pm"]
+  W0["parte 0<br/>unidades 0–31<br/>0:00–5:20"] --- W1["parte 1<br/>unidades 32–63<br/>5:20–10:40"] --- W2["parte 2<br/>unidades 64–95<br/>10:40–4:00pm"] --- W3["parte 3<br/>unidades 96–127<br/>4:00pm–9:20pm"] --- W4["parte 4<br/>unidades 128–143<br/>9:20pm–12:00"]
 ```
 
 Para marcar un bloque `[inicio, fin)` del día $d$ (`marcar`):
 
 $$
-u(t) = \min\!\Big(96,\ \max\!\big(0,\ \tfrac{t - 420}{10}\big)\Big),\qquad
+u(t) = \tfrac{t}{10},\qquad
 a = \lfloor u(\text{inicio}) \rfloor,\qquad
 b = \lceil u(\text{fin}) \rceil - 1
 $$
@@ -93,31 +79,31 @@ Las dos rejillas no dan choques falsos. Todos los inicios son múltiplos de 10, 
 
 | Clase | Última unidad | La clase siguiente empieza en |
 |---|---|---|
-| 7:00–7:45 | 4 (7:40–7:50) | unidad 5 (7:50) |
-| 6:00–6:55pm | 71 (6:50–7:00) | unidad 72 (7:00pm) |
+| 7:00–7:45 | 46 (7:40–7:50) | unidad 47 (7:50) |
+| 6:00–6:55pm | 113 (6:50–7:00) | unidad 114 (7:00pm) |
 
-Un choque real entre las dos rejillas sí aparece. Por ejemplo, 6:00–6:55pm (unidades 66–71) choca con 5:50–6:35pm (65–69).
+Un choque real entre las dos rejillas sí aparece. Por ejemplo, 6:00–6:55pm (unidades 108–113) choca con 5:50–6:35pm (107–111).
 
-Límites: una clase antes de las 7:00 empieza en la unidad 0. El motor no marca el tiempo después de las 23:00. Los datos reales van de 7:00 a 10:45pm.
+Las unidades cubren el día entero. Una clase a cualquier hora choca bien con las otras. Los datos reales van de 7:00 a 10:45pm.
 
-## 2.5 Huecos
+## 2.4 Huecos
 
 Una unidad libre está entre la primera y la última unidad ocupada del mismo día. Un hueco es una serie de unidades libres seguidas.
 
-`huecosDia(partes, i0, salida)` usa las 3 partes del día:
+`huecosDia(partes, i0, salida)` usa las 5 partes del día:
 
 $$
 p = \text{primera unidad ocupada},\quad q = \text{última unidad ocupada},\quad
 \text{libre}_w = \text{tramo}_w(p, q) \;\&\; \lnot\,\text{parte}_w
 $$
 
-1. Escribe las 3 máscaras $\text{libre}_w$ en `salida`.
+1. Escribe las 5 máscaras $\text{libre}_w$ en `salida`.
 2. Da la cantidad de unidades libres: $\sum_w \operatorname{popcount}(\text{libre}_w)$.
 
 `tramosLibres(libre)` da la cantidad de huecos. Cuenta cada unidad libre cuya unidad anterior está ocupada:
 
 $$
-\text{huecos} = \sum_{w=0}^{2} \operatorname{popcount}\big(\text{libre}_w \;\&\; \lnot((\text{libre}_w \ll 1) \mid c_w)\big),\qquad c_0 = 0,\quad c_{w+1} = \text{libre}_w \ggg 31
+\text{huecos} = \sum_{w=0}^{4} \operatorname{popcount}\big(\text{libre}_w \;\&\; \lnot((\text{libre}_w \ll 1) \mid c_w)\big),\qquad c_0 = 0,\quad c_{w+1} = \text{libre}_w \ggg 31
 $$
 
 | Día | Unidades libres | Huecos |

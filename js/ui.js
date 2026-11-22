@@ -29,28 +29,23 @@ export const pasoActual = () => {
 export const repintar = (app) => PASOS[pasoActual()](app);
 
 /**
- * Lo calculado ya no vale; el deshacer viejo pisaría lo nuevo. Avisa con el evento "estado".
+ * Lo calculado ya no vale; el deshacer viejo pisaría lo nuevo.
+ * Las requeridas sin secciones (grupo quitado) salen aquí, antes de guardar.
  * @param {App} app
  */
 export function descartar(app) {
   cortarWorker();
   cerrarAviso();
   app.secciones = construirSecciones(app.estado.grupos);
+  const hay = new Set(app.secciones.map((s) => s.codasig));
+  app.estado.requeridas = app.estado.requeridas.filter((c) => hay.has(c));
   app.resultado = null;
   app.opcion = 0;
   app.enCurso = 0;
-  document.dispatchEvent(new Event("estado"));
 }
 
 /** @param {App} app */
 export function cambio(app) {
   descartar(app);
   guardar(app.estado);
-}
-
-/** Cambio desde el agente. @param {App} app @param {() => void} hacer */
-export function aplicar(app, hacer) {
-  hacer();
-  cambio(app);
-  repintar(app);
 }

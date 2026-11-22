@@ -1,6 +1,6 @@
 // @ts-check
 
-import { migrarGrupos } from "./modelo.js";
+import { guardarLocal, leerLocal } from "./dom.js";
 
 /**
  * Prefs con las listas siempre presentes.
@@ -15,34 +15,16 @@ const CLAVE = "horautp:v1";
 const vacio = () => ({
   grupos: [],
   requeridas: [],
-  prefs: { solo: {}, soloTurno: false, menosDias: false, fijas: [], excluidas: [], evitados: [] },
+  prefs: { solo: {}, dias: 0, fijas: [], excluidas: [], evitados: [] },
 });
-
-/** Prefs de versiones anteriores. @param {Record<string, any>} viejas */
-export function migrar(viejas) {
-  const { materias = {}, diasMax, unGrupo, evitarHuecos, pesos, ...prefs } = viejas;
-  prefs.solo ??= {};
-  for (const [c, pm] of Object.entries(materias)) {
-    const solo = [...new Set([...(pm.solo ?? []), ...(pm.profesor ? [pm.profesor] : [])])];
-    if (solo.length) prefs.solo[c] = solo;
-    if (pm.horario) prefs.horario ??= pm.horario;
-  }
-  if (diasMax) prefs.menosDias = true;
-  return prefs;
-}
 
 /** @returns {Estado} */
 export function cargar() {
   const base = vacio();
   try {
-    const e = JSON.parse(localStorage.getItem(CLAVE) ?? "null");
+    const e = JSON.parse(leerLocal(CLAVE) ?? "null");
     if (!e || !Array.isArray(e.grupos)) return base;
-    return {
-      ...base,
-      ...e,
-      grupos: migrarGrupos(e.grupos),
-      prefs: { ...base.prefs, ...migrar(e.prefs ?? {}) },
-    };
+    return { ...base, ...e, prefs: { ...base.prefs, ...e.prefs } };
   } catch {
     return base; // corrupto
   }
@@ -66,10 +48,6 @@ export function escucharOtrasPestanas(alCambiar) {
 
 /** @param {Estado} e */
 export function guardar(e) {
-  try {
-    localStorage.setItem(CLAVE, JSON.stringify(e));
-    if (!persistencia && e.grupos.length) pedirPersistencia();
-  } catch {
-    // modo privado o sin espacio
-  }
+  guardarLocal(CLAVE, JSON.stringify(e));
+  if (!persistencia && e.grupos.length) pedirPersistencia();
 }

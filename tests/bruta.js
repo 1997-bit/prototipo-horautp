@@ -1,13 +1,13 @@
-// Referencia: fuerza bruta, sin máscaras ni poda. Celdas de 10 min desde las 7:00.
+// Referencia: fuerza bruta, sin máscaras ni poda. Celdas de 10 min desde las 0:00.
 
-import { finMin, franjaDe, inicioMin } from "../js/periodos.js";
+import { finMin, inicioMin } from "../js/periodos.js";
+import { PESOS, pesoDias } from "../js/preferencias.js";
 
 /** Celdas de 10 min que toca [ini, fin). @param {number} ini @param {number} fin */
 const celdas = (ini, fin) => {
-  const a = Math.floor((ini - 420) / 10), b = Math.ceil((fin - 420) / 10);
+  const a = Math.floor(ini / 10), b = Math.ceil(fin / 10);
   return Array.from({ length: Math.max(0, b - a) }, (_, i) => a + i);
 };
-import { PESOS } from "../js/preferencias.js";
 
 /**
  * @param {import("../js/modelo.js").Seccion[]} secciones
@@ -20,25 +20,24 @@ export function bruta(secciones, requeridas, prefs) {
   const fijas = new Set(prefs.fijas ?? []);
   const evitados = new Set(prefs.evitados ?? []);
   const listas = requeridas.map((c) => {
-    const enTurno = (s) => !prefs.soloTurno || !prefs.horario || fijas.has(s.codhora) || s.bloques.every(([, ini]) => franjaDe(ini) === prefs.horario);
     const solo = prefs.solo?.[c] ?? [];
     const quiero = (s) => fijas.has(s.codhora) || !solo.length || solo.includes(s.profesor);
-    const l = secciones.filter((s) => s.codasig === c && !excluidas.has(s.codhora) && !evitados.has(s.profesor) && enTurno(s) && quiero(s));
+    const l = secciones.filter((s) => s.codasig === c && !excluidas.has(s.codhora) && !evitados.has(s.profesor) && quiero(s));
     const f = l.filter((s) => fijas.has(s.codhora));
     return f.length ? f : l;
   });
-  // Mismo grupo: vale su horario oficial; solo chocan subgrupos distintos.
+  // Mismo grupo: subgrupos distintos chocan; misma hora y misma aula, no.
+  const pisan = (a, b, aulas) => a.bloques.some(([d1, i1, f1, , x1]) => b.bloques.some(([d2, i2, f2, , x2]) =>
+    d1 === d2 && celdas(i1, f1).some((c) => celdas(i2, f2).includes(c)) && (!aulas || !x1 || x1 !== x2)));
   const choque = (a, b) => (a.grupo === b.grupo && a.codhora > 0 && b.codhora > 0
-    ? !!a.sub && !!b.sub && a.sub !== b.sub
-    : a.bloques.some(([d1, i1, f1]) => b.bloques.some(([d2, i2, f2]) =>
-      d1 === d2 && celdas(i1, f1).some((c) => celdas(i2, f2).includes(c)))));
+    ? (!!a.sub && !!b.sub && a.sub !== b.sub) || pisan(a, b, true)
+    : pisan(a, b, false));
   const out = [];
   const rec = (i, combo) => {
     if (i === listas.length) {
-      const fuera = combo.filter((s) => prefs.horario && s.bloques.some(([, ini]) => franjaDe(ini) !== prefs.horario));
-      let p = fuera.length * PESOS.horario;
+      let p = 0;
       const dias = new Set(combo.flatMap((s) => s.bloques.map((b) => b[0])));
-      if (prefs.menosDias) p += (dias.size - 1) * PESOS.dias;
+      if (dias.size) p += (dias.size - 1) * pesoDias(prefs);
       for (const d of dias) {
         const ps = combo.flatMap((s) => s.bloques.filter((b) => b[0] === d)
           .flatMap(([, ini, fin]) => celdas(ini, fin)));

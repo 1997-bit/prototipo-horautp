@@ -19,7 +19,7 @@ export const nombrePropio = (t) => t.toLowerCase().replace(RE_INICIAL, (_, a, b)
 export const codigo = (s) => (s.codhora > 0 ? String(s.codhora).padStart(4, "0") : "");
 
 /** "Lab · 3-401", "Subgrupo B · 1-311". @param {Bloque} b */
-const detalle = ([, , , tipo, aula, sub]) =>
+export const detalle = ([, , , tipo, aula, sub]) =>
   [sub ? `Subgrupo ${sub}` : nombreTipo(tipo), aula].filter(Boolean).join(" · ");
 
 /** Color de la materia. @param {number | undefined} tono */
@@ -57,17 +57,39 @@ function filasDe(bloques) {
 }
 
 /**
- * Celular: sigla y aula. La caja flota: no cambia el alto de la fila.
- * @param {Seccion} s @param {Bloque} b @param {number} filas que cubre @param {Map<string, number>} tono
+ * @callback AlTocar
+ * @param {Seccion} s @param {Bloque} b @param {HTMLElement} celda
  */
-function celdaClase(s, b, filas, tono) {
+
+/**
+ * Celular: sigla y aula. La caja flota: no cambia el alto de la fila.
+ * @param {string} tag "td" o, dentro de un solape, "div"
+ * @param {Seccion} s @param {Bloque} b @param {number} filas que cubre @param {Map<string, number>} tono
+ * @param {AlTocar} [alTocar] sin él, el detalle solo sale en celular
+ * @param {string} [estilo] posición dentro del solape
+ */
+function celdaClase(tag, s, b, filas, tono, alTocar, estilo = "") {
   const aula = b[4];
-  return h("td", {
-    rowSpan: filas,
+  /** @param {Event} e */
+  const tocar = (e) => {
+    const celda = /** @type {HTMLElement} */ (e.currentTarget);
+    if (alTocar) alTocar(s, b, celda);
+    else detalleClase(s, b, tono);
+  };
+  return h(tag, {
+    rowSpan: tag === "td" ? filas : null,
     class: filas === 1 ? "clase breve" : "clase",
     "data-codhora": s.codhora,
-    style: `--h:${tono.get(s.codasig)}`,
-    onclick: () => detalleClase(s, b, tono),
+    style: `--h:${tono.get(s.codasig)};${estilo}`,
+    tabindex: alTocar ? 0 : null,
+    role: tag === "div" && alTocar ? "button" : null,
+    "aria-haspopup": alTocar ? "dialog" : null,
+    onclick: tocar,
+    onkeydown: alTocar && ((/** @type {KeyboardEvent} */ e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      tocar(e);
+    }),
   },
   h("div", { class: "caja", title: s.asignatura },
     h("b", {},
@@ -77,6 +99,29 @@ function celdaClase(s, b, filas, tono) {
     aula && h("small", { class: "corto", "aria-hidden": "true" }, aula)));
 }
 
+/**
+ * Clases del mismo día que chocan (subgrupos, datos del portal): una celda
+ * con columnas, cada clase a su altura.
+ * @param {{s: Seccion, b: Bloque, desde: number, cubre: number}[]} grupo
+ * @param {number} desde @param {number} total filas
+ * @param {Map<string, number>} tono @param {AlTocar} [alTocar]
+ */
+function celdaSolape(grupo, desde, total, tono, alTocar) {
+  /** @type {number[]} fila libre de cada columna */
+  const libre = [];
+  const carril = grupo.map((c) => {
+    let i = libre.findIndex((f) => f <= c.desde);
+    if (i < 0) i = libre.length;
+    libre[i] = c.desde + c.cubre;
+    return i;
+  });
+  const n = libre.length;
+  const pct = (/** @type {number} */ x) => `${(x * 100).toFixed(3)}%`;
+  return h("td", { rowSpan: total, class: "solape" }, grupo.map(({ s, b, desde: d, cubre }, i) =>
+    celdaClase("div", s, b, cubre, tono, alTocar,
+      `top:${pct((d - desde) / total)};height:${pct(cubre / total)};left:${pct(carril[i] / n)};width:${pct(1 / n)}`)));
+}
+
 /** @param {number} desde @param {number} hasta */
 const celdaHora = (desde, hasta) => h("th", { scope: "row" },
   formatoHora(desde),
@@ -84,38 +129,105 @@ const celdaHora = (desde, hasta) => h("th", { scope: "row" },
 
 /**
  * Tabla semanal: fila = período, celda con rowspan = períodos que cubre.
- * @param {Seccion[]} secciones @param {Map<string, number>} tono
+ * @param {Seccion[]} secciones @param {Map<string, number>} tono @param {AlTocar} [alTocar]
  */
-export function grilla(secciones, tono) {
+export function grilla(secciones, tono, alTocar) {
   let diasUsados = 0;
   const filas = filasDe(secciones.flatMap((s) => s.bloques));
-  /** @type {Map<string, [Seccion, Bloque, number]>} */
+  /** @type {Map<string, HTMLElement>} */
   const inicio = new Map();
   const tapada = new Set();
-  for (const s of secciones) {
-    for (const b of s.bloques) {
-      const [d, ini, fin] = b;
-      diasUsados |= 1 << d;
-      const cubre = filas.filter(([t]) => t >= ini && t < fin);
-      inicio.set(`${d},${ini}`, [s, b, cubre.length]);
-      for (const [t] of cubre.slice(1)) tapada.add(`${d},${t}`);
+  for (let d = 0; d < 7; d++) {
+    const clases = secciones.flatMap((s) => s.bloques.filter((b) => b[0] === d).map((b) => {
+      const desde = filas.findIndex(([t]) => t >= b[1]);
+      const cubre = filas.filter(([t]) => t >= b[1] && t < b[2]).length;
+      return { s, b, desde, cubre };
+    })).sort((x, y) => x.desde - y.desde || y.cubre - x.cubre);
+    if (clases.length) diasUsados |= 1 << d;
+    // Grupos de clases que se tocan en alguna fila.
+    for (let i = 0; i < clases.length;) {
+      let hasta = clases[i].desde + clases[i].cubre, j = i + 1;
+      while (j < clases.length && clases[j].desde < hasta) {
+        hasta = Math.max(hasta, clases[j].desde + clases[j].cubre);
+        j++;
+      }
+      const grupo = clases.slice(i, j), desde = clases[i].desde;
+      const el = grupo.length === 1
+        ? celdaClase("td", grupo[0].s, grupo[0].b, grupo[0].cubre, tono, alTocar)
+        : celdaSolape(grupo, desde, hasta - desde, tono, alTocar);
+      inicio.set(`${d},${filas[desde][0]}`, el);
+      for (let f = desde + 1; f < hasta; f++) tapada.add(`${d},${filas[f][0]}`);
+      i = j;
     }
   }
   const dias = [0, 1, 2, 3, 4, 5, 6].filter((d) => d < 5 || diasUsados & (1 << d));
   /** @param {number} d @param {number} t */
   const celda = (d, t) => {
     if (tapada.has(`${d},${t}`)) return null;
-    const c = inicio.get(`${d},${t}`);
-    return c ? celdaClase(...c, tono) : h("td", {});
+    return inicio.get(`${d},${t}`) ?? h("td", {});
   };
   return h("div", { class: "grilla" },
     h("table", {},
       h("thead", {}, h("tr", {},
         h("th", { scope: "col" }, "Hora"),
-        dias.map((d) => h("th", { scope: "col" }, DIAS_CORTO[d])))),
-      h("tbody", {}, filas.map(([t, hasta]) => h("tr", {},
+        dias.map((d) => h("th", { scope: "col", "data-d": d }, DIAS_CORTO[d])))),
+      h("tbody", {}, filas.map(([t, hasta]) => h("tr", { "data-t": t, "data-hasta": hasta },
         celdaHora(t, hasta),
         dias.map((d) => celda(d, t)))))));
+}
+
+// ---------- Fantasma: otra sección encima de la grilla, sin recalcular ----------
+
+/**
+ * Píxel vertical de un minuto, interpolado entre filas.
+ * @param {{t: number, hasta: number, arriba: number, alto: number}[]} filas @param {number} min
+ */
+function yDe(filas, min) {
+  let i = filas.length - 1;
+  while (i > 0 && filas[i].t > min) i--;
+  const f = filas[i], sig = filas[i + 1];
+  const fin = sig ? sig.t : f.hasta;
+  const alto = sig ? sig.arriba - f.arriba : f.alto;
+  const frac = Math.max(0, Math.min(1, (min - f.t) / (fin - f.t)));
+  return f.arriba + frac * alto;
+}
+
+/** @param {Element} cont */
+export function quitarFantasma(cont) {
+  for (const el of cont.querySelectorAll(".fantasma-clase")) el.remove();
+  for (const el of cont.querySelectorAll(".saliendo")) el.classList.remove("saliendo");
+}
+
+/**
+ * Dibuja `nueva` sobre la grilla y atenúa la sección que sale.
+ * Los bloques en días que la grilla no muestra no se dibujan.
+ * @param {HTMLElement} cont .grilla @param {Seccion} nueva @param {number} sale codhora
+ * @param {number | undefined} tono
+ */
+export function fantasma(cont, nueva, sale, tono) {
+  quitarFantasma(cont);
+  const base = cont.getBoundingClientRect();
+  const dx = cont.scrollLeft - base.left, dy = cont.scrollTop - base.top;
+  /** @type {Map<number, DOMRect>} */
+  const cols = new Map([...cont.querySelectorAll("thead th[data-d]")].map((th) => [
+    Number(/** @type {HTMLElement} */ (th).dataset.d), th.getBoundingClientRect()]));
+  const filas = [...cont.querySelectorAll("tbody tr[data-t]")].map((tr) => {
+    const r = tr.getBoundingClientRect();
+    const { t, hasta } = /** @type {HTMLElement} */ (tr).dataset;
+    return { t: Number(t), hasta: Number(hasta), arriba: r.top, alto: r.height };
+  });
+  if (!filas.length) return;
+  for (const el of cont.querySelectorAll(`.clase[data-codhora="${sale}"]`)) el.classList.add("saliendo");
+  for (const b of nueva.bloques) {
+    const col = cols.get(b[0]);
+    if (!col) continue;
+    const arriba = yDe(filas, b[1]), abajo = yDe(filas, b[2]);
+    cont.append(h("div", {
+      class: "fantasma-clase",
+      "aria-hidden": "true",
+      style: `--h:${tono};left:${col.left + dx}px;top:${arriba + dy}px;width:${col.width}px;height:${Math.max(abajo - arriba, 12)}px`,
+    }, h("b", {}, sigla(nueva.asignatura)), h("small", {}, rango(b[1], b[2]))));
+  }
 }
 
 /** @type {HTMLElement | null} */

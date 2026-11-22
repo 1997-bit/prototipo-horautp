@@ -9,12 +9,11 @@ const PRIMER_INICIO = 7 * 60;
 const PASO = 50;
 const DURACION = 45;
 
-export const FRANJAS = ["manana", "tarde", "noche"];
-
 const RE_HORA = /(\d{1,2}):(\d{2})/;
 const RE_AMPM = /([AP])\.?\s*M/i;
 const RE_TILDES = /[\u0300-\u036f]/g;
 const RE_ESPACIOS = /\s+/g;
+const RE_NO_CLAVE = /[^A-Z0-9]/g;
 
 /** @param {number} k */
 export const inicioMin = (k) => PRIMER_INICIO + PASO * k;
@@ -49,13 +48,6 @@ export function formatoHora(min) {
 /** @param {number} ini @param {number} fin */
 export const rango = (ini, fin) => `${formatoHora(ini)}–${formatoHora(fin)}`;
 
-/** Turno según la hora de inicio, en minutos. @param {number} min */
-export function franjaDe(min) {
-  if (min < inicioMin(7)) return "manana";
-  if (min < inicioMin(12)) return "tarde";
-  return "noche";
-}
-
 /**
  * Fila de la grilla del portal → [inicio, fin] en minutos, o null.
  * "12:50-1:35P.M.": el AM/PM del final vale para las dos horas.
@@ -80,6 +72,9 @@ export const limpio = (s) => s.replace(RE_ESPACIOS, " ").trim();
 export function normalizar(s) {
   return limpio(s.normalize("NFD").replace(RE_TILDES, "").toUpperCase());
 }
+
+/** Solo letras y dígitos: "DES. DE SOFT.II" → "DESDESOFTII". @param {string} s */
+export const clave = (s) => normalizar(s).replace(RE_NO_CLAVE, "");
 
 const DIAS_NORM = DIAS.map(normalizar);
 

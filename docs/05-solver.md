@@ -32,13 +32,12 @@ El solver numera todas las candidatas: primero las de la materia 0, después las
 |---|---|
 | `base[j]` | Número global de la primera candidata de la materia $j$. |
 | `woff[j]` | Primera palabra de la materia $j$ en un conjunto de bits. La materia $j$ usa $\lceil n_j / 32 \rceil$ palabras. $TW$ es el total. |
-| `P[g]` | Penalidad de la candidata ($p$). |
 | `DIAS[g]` | Días con clase (7 bits). |
 | `USO_I`, `USO_M`, `UOFF` | Las partes ocupadas de cada candidata: posición y máscara. |
 | `CONF[g]` | Conjunto de bits ($TW$ palabras): las candidatas de **otras** materias que chocan con $g$. |
 | `CELDA[u]` | Conjunto de bits ($TW$ palabras): las candidatas que ocupan la unidad $u$. $u = 32 \cdot \text{posición} + \text{bit}$. |
 
-`CONF` usa `chocan` ([Choques](03-modelo.md#35-choques)). El solver lo calcula una vez para cada par de candidatas de materias distintas.
+`CONF` usa `chocan` ([Choques](03-modelo.md#34-choques)). El solver lo calcula una vez para cada par de candidatas de materias distintas.
 
 ## 5.3 Estado de la búsqueda
 
@@ -46,7 +45,7 @@ El solver numera todas las candidatas: primero las de la materia 0, después las
 |---|---|
 | `dom[t]` | Candidatas que todavía caben, en el nivel $t$. El nivel $t$ tiene $t$ materias elegidas. |
 | `asignada[j]` | 1 si la materia $j$ ya tiene sección. |
-| `ocupado` | Las 21 partes ocupadas por las secciones elegidas. |
+| `ocupado` | Las 35 partes ocupadas por las secciones elegidas. |
 | `previo` | El valor de cada parte antes de agregar una sección. |
 | `muertos[t]` | Unidades libres que ninguna candidata puede ocupar, en el nivel $t$. |
 | `testigo[u]` | La última palabra de `CELDA[u]` que tenía una candidata. Acelera la búsqueda de muertos. |
@@ -57,46 +56,45 @@ El solver numera todas las candidatas: primero las de la materia 0, después las
 
 ```mermaid
 flowchart TB
-  A["dfs(t, pen, dias)"] --> T{"¿Tiempo agotado?"}
+  A["dfs(t, dias)"] --> T{"¿Tiempo agotado?"}
   T -- sí --> X[parcial = true y salir]
   T -- no --> H{"¿t = M?"}
   H -- sí --> L["hoja: calcular total y guardar"]
-  H -- no --> C["Para cada materia libre:<br/>contar candidatas, mínima p, días nuevos"]
+  H -- no --> C["Para cada materia libre:<br/>contar candidatas, días nuevos"]
   C --> Z{"¿Una materia sin candidatas?"}
   Z -- sí --> R[Salir]
   Z -- no --> M["Calcular muertos y cota"]
   M --> Q{"¿cota ≥ peor?"}
   Q -- sí --> R
-  Q -- no --> E["Para cada candidata g de la materia elegida,<br/>de menor a mayor p"]
+  Q -- no --> E["Para cada candidata g de la materia elegida"]
   E --> F["dom[t+1] = dom[t] & ¬CONF[g]<br/>marcar g en ocupado"]
-  F --> A2["dfs(t+1, pen + P[g], dias | DIAS[g])"]
+  F --> A2["dfs(t+1, dias | DIAS[g])"]
   A2 --> U["Restaurar ocupado"]
   U --> E
 ```
 
-Pasos de `dfs(t, pen, dias)`:
+Pasos de `dfs(t, dias)`:
 
 1. Cada 1024 nodos, revisa el tiempo. Si pasó `msMax`, pon `parcial = true` y sal.
 2. Si $t = M$, llama a `hoja` y sal.
 3. Para cada materia $j$ libre:
    1. Cuenta sus candidatas en `dom[t]`. Si no hay, sal.
-   2. Toma la menor $p$. Es la de la primera candidata, porque la lista está ordenada.
-   3. Si `menosDias` está activo, calcula los días nuevos mínimos de sus candidatas: $\min_g \operatorname{popcount}(\text{DIAS}[g] \;\&\; \lnot\,\text{dias})$.
+   2. Si $w_d > 0$, calcula los días nuevos mínimos de sus candidatas: $\min_g \operatorname{popcount}(\text{DIAS}[g] \;\&\; \lnot\,\text{dias})$.
 4. Elige la materia con menos candidatas. Si hay empate, elige la primera.
 5. Calcula los muertos ([Unidades muertas](#55-unidades-muertas)).
 6. Calcula la cota:
 
 $$
-\text{cota} = \text{pen} + \sum_{j\ \text{libre}} \min p_j \;+\; 20 \cdot \max\!\big(0,\ |\text{dias}| + \max_j \text{díasNuevos}_j - d_{\max}\big) \;+\; 1 \cdot \text{muertos}
+\text{cota} = w_d \cdot \max\!\big(0,\ |\text{dias}| + \max_j \text{díasNuevos}_j - 1\big) \;+\; 1 \cdot \text{muertos}
 $$
 
-   $d_{\max} = 1$ si `menosDias` está activo. Si no, $d_{\max} = \infty$ y ese término vale 0.
+   $w_d$ es `pesoDias(prefs)` ([Penalidad](04-preferencias.md#44-penalidad)). Si $w_d = 0$, el solver no calcula los días nuevos.
 7. Si $\text{cota} \ge \text{peor}$, sal.
-8. Para cada candidata $g$ de la materia elegida, de menor a mayor $p$:
-   1. Si $\text{cota} - \min p_{\text{elegida}} + P[g] \ge \text{peor}$, para. Las candidatas siguientes tienen una $p$ igual o mayor.
+8. Para cada candidata $g$ de la materia elegida:
+   1. Si $\text{cota} \ge \text{peor}$, para. `peor` baja cada vez que `hoja` guarda una opción.
    2. Calcula `dom[t+1] = dom[t] & ~CONF[g]`. Vacía las palabras de la materia elegida.
    3. Guarda cada parte en `previo` y marca las partes de $g$ en `ocupado`.
-   4. Llama a `dfs(t + 1, pen + P[g], dias | DIAS[g])`.
+   4. Llama a `dfs(t + 1, dias | DIAS[g])`.
    5. Restaura `ocupado` desde `previo`, en orden inverso.
    6. Si `parcial` es true, para.
 
@@ -117,13 +115,13 @@ Para cada día y cada parte:
 
 ## 5.6 Hoja
 
-`hoja(pen, dias)`:
+`hoja(dias)`:
 
 $$
-\text{total} = \text{pen} + 20 \cdot \max(0,\ |\text{dias}| - d_{\max}) + 1 \cdot U
+\text{total} = w_d \cdot \max(0,\ |\text{dias}| - 1) + 1 \cdot U
 $$
 
-$U$ es la cantidad de unidades libres de `ocupado`.
+$U$ es la cantidad de unidades libres de `ocupado`. La cota y la hoja usan `costo` ([Penalidad](04-preferencias.md#44-penalidad)).
 
 1. Si $\text{total} \ge \text{peor}$, sal.
 2. Inserta la opción en `mejores`, después de las que tienen la misma penalidad.
@@ -134,8 +132,6 @@ $U$ es la cantidad de unidades libres de `ocupado`.
 
 Ningún término de la cota baja cuando el solver agrega secciones:
 
-- `pen` solo sube.
-- Cada materia libre va a sumar por lo menos su menor $p$.
 - Los días con clase solo suben. Cada materia libre agrega por lo menos sus días nuevos mínimos.
 - Una unidad muerta queda libre y entre clases hasta el final.
 

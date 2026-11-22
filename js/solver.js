@@ -1,12 +1,11 @@
 // @ts-check
 // Branch & bound exacto: las K combinaciones de menor penalidad.
 // Forward checking con bitsets (dom &= ~choques); ramifica por la materia
-// con menos candidatas. Cota: mejor sección pendiente + días forzados +
-// huecos que nadie puede llenar. Al agotar el tiempo: parcial.
+// con menos candidatas. Cota: días forzados + huecos que nadie puede llenar. Al agotar el tiempo: parcial.
 
-import { PALABRAS, huecosDia, popcount, tramosLibres } from "./bits.js";
+import { PALABRAS, bitBajo, huecosDia, popcount, tramosLibres } from "./bits.js";
 import { chocan } from "./modelo.js";
-import { PESOS, descartada, penalSeccion, penalidad } from "./preferencias.js";
+import { costo, descartada, penalidad, pesoDias } from "./preferencias.js";
 
 /**
  * @typedef {import("./modelo.js").Seccion} Seccion
@@ -16,7 +15,6 @@ import { PESOS, descartada, penalSeccion, penalidad } from "./preferencias.js";
  * @typedef {{estado: "OK", opciones: Opcion[], parcial: boolean}
  *         | {estado: "FALTAN", faltan: string[], opciones: [], parcial: false}
  *         | {estado: "SIN_SOLUCION", opciones: [], parcial: boolean, choques: [string, string][]}} Resultado
- * @typedef {{s: Seccion, p: number}} Candidata
  */
 
 export const K_POR_DEFECTO = 50;
@@ -25,25 +23,21 @@ export const MS_MAX = 1500;
 // Palabras de ocupación: 7 días × PALABRAS (celdas de 10 min).
 const W = 7 * PALABRAS;
 
-/** @param {number} x */
-const bitBajo = (x) => 31 - Math.clz32(x & -x);
-
 /**
- * Ordenadas por penalidad.
  * @param {Seccion[]} secciones @param {string[]} requeridas @param {Prefs} prefs
- * @returns {Map<string, Candidata[]>}
+ * @returns {Map<string, Seccion[]>}
  */
 export function candidatas(secciones, requeridas, prefs) {
   const fijas = new Set(prefs.fijas ?? []);
-  /** @type {Map<string, Candidata[]>} */
+  /** @type {Map<string, Seccion[]>} */
   const m = new Map(requeridas.map((c) => [c, []]));
   for (const s of secciones) {
     const l = m.get(s.codasig);
-    if (l && !descartada(s, prefs)) l.push({ s, p: penalSeccion(s, prefs) });
+    if (l && !descartada(s, prefs)) l.push(s);
   }
   for (const [c, l] of m) {
-    const f = l.filter((x) => fijas.has(x.s.codhora));
-    m.set(c, (f.length ? f : l).sort((a, b) => a.p - b.p));
+    const f = l.filter((x) => fijas.has(x.codhora));
+    m.set(c, f.length ? f : l);
   }
   return m;
 }
@@ -51,7 +45,7 @@ export function candidatas(secciones, requeridas, prefs) {
 /**
  * Materia j: candidatas base[j]..base[j+1], palabras woff[j]..woff[j+1].
  * ANCHO: palabras de un dominio (un bit por candidata).
- * @param {Candidata[][]} materias
+ * @param {Seccion[][]} materias
  */
 function tablas(materias) {
   const M = materias.length;
@@ -65,14 +59,12 @@ function tablas(materias) {
 
   /** @type {Seccion[]} */
   const sec = new Array(N);
-  const P = new Int32Array(N);
   const DIAS = new Uint8Array(N);
   const UOFF = new Int32Array(N + 1);
   let g = 0;
   for (const l of materias) {
-    for (const { s, p } of l) {
+    for (const s of l) {
       sec[g] = s;
-      P[g] = p;
       DIAS[g] = s.dias;
       UOFF[g + 1] = UOFF[g] + (s.usos.length >>> 1);
       g++;
@@ -113,12 +105,12 @@ function tablas(materias) {
       }
     }
   }
-  return { M, N, ANCHO, base, woff, sec, P, DIAS, USO_I, USO_M, UOFF, CONF, CELDA };
+  return { M, N, ANCHO, base, woff, sec, DIAS, USO_I, USO_M, UOFF, CONF, CELDA };
 }
 
 /**
  * Pares de materias que chocan en todas sus secciones.
- * @param {Map<string, Candidata[]>} cand
+ * @param {Map<string, Seccion[]>} cand
  * @returns {[string, string][]}
  */
 function paresImposibles(cand) {
@@ -128,7 +120,7 @@ function paresImposibles(cand) {
   for (let i = 0; i < l.length; i++) {
     for (let j = i + 1; j < l.length; j++) {
       const [ci, ai] = l[i], [cj, aj] = l[j];
-      if (ai.every((a) => aj.every((b) => chocan(a.s, b.s)))) pares.push([ci, cj]);
+      if (ai.every((a) => aj.every((b) => chocan(a, b)))) pares.push([ci, cj]);
     }
   }
   return pares;
@@ -143,14 +135,14 @@ function paresImposibles(cand) {
  * @returns {Resultado}
  */
 export function resolver(secciones, requeridas, prefs = {}, K = K_POR_DEFECTO, msMax = MS_MAX) {
-  const diasMax = prefs.menosDias ? 1 : Infinity;
-  const conDias = !!prefs.menosDias;
+  const porDia = pesoDias(prefs);
+  const conDias = porDia > 0;
 
   const cand = candidatas(secciones, requeridas, prefs);
   const faltan = requeridas.filter((c) => cand.get(c)?.length === 0);
   if (faltan.length) return { estado: "FALTAN", faltan, opciones: [], parcial: false };
 
-  const { M, ANCHO, base, woff, sec, P, DIAS, USO_I, USO_M, UOFF, CONF, CELDA } = tablas([...cand.values()]);
+  const { M, ANCHO, base, woff, sec, DIAS, USO_I, USO_M, UOFF, CONF, CELDA } = tablas([...cand.values()]);
 
   // Dominio por nivel.
   const dom = new Uint32Array((M + 1) * ANCHO);
@@ -177,15 +169,19 @@ export function resolver(secciones, requeridas, prefs = {}, K = K_POR_DEFECTO, m
   let nodos = 0;
   let parcial = false;
 
-  /** @param {number} pen @param {number} dias */
-  function hoja(pen, dias) {
+  /** @param {number} dias */
+  function hoja(dias) {
     const nDias = popcount(dias);
-    let celdas = 0;
-    for (let d = 0; d < 7; d++) celdas += huecosDia(ocupado, d * PALABRAS, hueco);
-    const total = pen + Math.max(0, nDias - diasMax) * PESOS.dias + celdas * PESOS.hueco;
+    let celdas = 0, nHuecos = 0;
+    for (let d = 0; d < 7; d++) {
+      const n = huecosDia(ocupado, d * PALABRAS, hueco);
+      if (n) {
+        celdas += n;
+        nHuecos += tramosLibres(hueco);
+      }
+    }
+    const total = costo(nDias, celdas, porDia);
     if (total >= peor) return;
-    let nHuecos = 0;
-    for (let d = 0; d < 7; d++) if (huecosDia(ocupado, d * PALABRAS, hueco)) nHuecos += tramosLibres(hueco);
     let j = mejores.length;
     while (j > 0 && mejores[j - 1].penalidad > total) j--;
     mejores.splice(j, 0, {
@@ -197,28 +193,26 @@ export function resolver(secciones, requeridas, prefs = {}, K = K_POR_DEFECTO, m
     if (mejores.length === K) peor = mejores[K - 1].penalidad;
   }
 
-  /** @param {number} t nivel (materias ya asignadas) @param {number} pen @param {number} dias */
-  function dfs(t, pen, dias) {
+  /** @param {number} t nivel (materias ya asignadas) @param {number} dias */
+  function dfs(t, dias) {
     if ((++nodos & 0x3ff) === 0 && performance.now() > limite) parcial = true;
     if (parcial) return;
     if (t === M) {
-      hoja(pen, dias);
+      hoja(dias);
       return;
     }
 
     const fila = t * ANCHO;
 
-    // Materia con menos candidatas, y la mejor penalidad y días nuevos de cada pendiente.
-    let elegida = -1, menos = Infinity, minElegida = 0;
-    let minPen = 0, diasNuevos = 0;
+    // Materia con menos candidatas, y los días nuevos de cada pendiente.
+    let elegida = -1, menos = Infinity, diasNuevos = 0;
     for (let j = 0; j < M; j++) {
       if (asignada[j]) continue;
-      let n = 0, mejorP = -1, minDias = 8;
+      let n = 0, minDias = 8;
       for (let w = fila + woff[j], fin = fila + woff[j + 1], g0 = base[j]; w < fin; w++, g0 += 32) {
         let x = dom[w];
         if (!x) continue;
         n += popcount(x);
-        if (mejorP < 0) mejorP = P[g0 + bitBajo(x)];
         if (conDias && minDias) {
           for (; x; x &= x - 1) {
             const dn = popcount(DIAS[g0 + bitBajo(x)] & ~dias);
@@ -227,12 +221,10 @@ export function resolver(secciones, requeridas, prefs = {}, K = K_POR_DEFECTO, m
         }
       }
       if (n === 0) return;
-      minPen += mejorP;
       if (conDias && minDias > diasNuevos) diasNuevos = minDias;
       if (n < menos) {
         menos = n;
         elegida = j;
-        minElegida = mejorP;
       }
     }
 
@@ -255,12 +247,10 @@ export function resolver(secciones, requeridas, prefs = {}, K = K_POR_DEFECTO, m
         huecosFijos += popcount(m);
       }
     }
-    const cota = pen + minPen
-      + Math.max(0, popcount(dias) + diasNuevos - diasMax) * PESOS.dias
-      + huecosFijos * PESOS.hueco;
+    const cota = costo(popcount(dias) + diasNuevos, huecosFijos, porDia);
     if (cota >= peor) return;
 
-    // Ramifica por la elegida, de menor a mayor penalidad.
+    // Ramifica por la elegida.
     asignada[elegida] = 1;
     const hijo = fila + ANCHO;
     let seguir = true;
@@ -268,8 +258,8 @@ export function resolver(secciones, requeridas, prefs = {}, K = K_POR_DEFECTO, m
     for (let w = fila + woff[elegida], g0 = base[elegida]; seguir && w < finElegida; w++, g0 += 32) {
       for (let x = dom[w]; x; x &= x - 1) {
         const g = g0 + bitBajo(x);
-        const p = P[g];
-        if (cota - minElegida + p >= peor) {
+        // peor baja con cada hoja nueva
+        if (cota >= peor) {
           seguir = false;
           break;
         }
@@ -283,7 +273,7 @@ export function resolver(secciones, requeridas, prefs = {}, K = K_POR_DEFECTO, m
         }
         elegidas[t] = g;
 
-        dfs(t + 1, pen + p, dias | DIAS[g]);
+        dfs(t + 1, dias | DIAS[g]);
 
         for (let i = u1 - 1; i >= u0; i--) ocupado[USO_I[i]] = previo[i];
         if (parcial) {
@@ -295,7 +285,7 @@ export function resolver(secciones, requeridas, prefs = {}, K = K_POR_DEFECTO, m
     asignada[elegida] = 0;
   }
 
-  dfs(0, 0, 0);
+  dfs(0, 0);
   if (mejores.length) {
     const opciones = mejores.map(({ sel, penalidad, detalle }) => ({
       secciones: Array.from(sel, (g) => sec[g]).sort((a, b) => a.asignatura.localeCompare(b.asignatura)),

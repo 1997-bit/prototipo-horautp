@@ -4,8 +4,6 @@ Web estática que arma tu horario sin choques, ordenado según
 tus preferencias. HTML, CSS y JS vanilla: sin build, sin dependencias,
 todo corre en el navegador.
 
-La versión anterior (TUI en Python con OR-Tools) está en [`legacy/`](legacy/).
-
 ## Iniciar el servidor
 
 Hace falta servirlo por HTTP: abrir `index.html` con doble clic no funciona
@@ -36,13 +34,12 @@ del repo.
 1. **Materias:** en el portal de Matrícula abre *Grupos por Asignatura →
    Horario del Grupo*, copia toda la página y pégala (o sube el `.html`
    o un `.json`). Sus materias quedan marcadas; desmarca las que no vas a inscribir.
-2. **Horario:** las 50 mejores combinaciones sin choques. Arriba, filtros de
-   turno, días y horas libres que reordenan al toque. En la tabla se fija o
-   excluye cada sección, y al tocar el profesor se prefiere o evita a otro.
-   Si no hay solución, dice qué materias chocan siempre.
+2. **Horario:** las 50 mejores combinaciones sin choques. Arriba, "Ir menos
+   días" reordena al toque. Al tocar una clase se
+   fija, se excluye o se cambia por otra sección que cabe (el plan B si el
+   grupo se llena). Si no hay solución, dice qué materias chocan siempre.
 3. **Inscribirse:** cada materia muestra su grupo y su C.HORA, lo que se
-   escribe en *Matrícula del Período*. Bajo el C.HORA va el plan B (↳): el que
-   la reemplaza sin mover nada más si el grupo se llena.
+   escribe en *Matrícula del Período*.
 
 Funciona sin conexión después de la primera visita (service worker
 network-first: con internet siempre usa la versión más nueva).
@@ -51,7 +48,7 @@ network-first: con internet siempre usa la versión más nueva).
 
 | Archivo | Qué hace |
 |---|---|
-| `js/periodos.js` | horas del portal, franjas, normalización de texto |
+| `js/periodos.js` | horas del portal, normalización de texto |
 | `js/bits.js` | celdas de 10 min: marcar, huecos, popcount |
 | `js/modelo.js` | grupos → secciones (con subgrupos) y máscaras por día |
 | `js/calendario.js` | grilla semanal y vista por día |
@@ -60,18 +57,21 @@ network-first: con internet siempre usa la versión más nueva).
 | `js/worker.js` | corre el solver fuera del hilo principal |
 | `js/entrada.js` | tabla HTML del portal → grupo |
 | `js/estado.js` | localStorage |
-| `js/ajustes.js` | vista del horario en el celular (compacta, lateral o lista) |
-| `js/atajos.js` | atajos de teclado y su ayuda (`?`) |
+| `js/ajustes.js` | tema, vista del horario en el celular, formato de hora, movimiento y borrar datos |
+| `js/tema.js` | aplica el tema antes del primer pintado |
 | `js/main.js`, `js/ui.js` | arranque, navegación por hash y estado de la app |
 | `js/materias.js`, `js/manual.js` | paso 1: cargar grupos, materia a mano, elegir materias |
-| `js/horario.js`, `js/carrusel.js`, `js/filtros.js` | paso 2: opciones, carrusel y filtros |
+| `js/horario.js`, `js/carrusel.js`, `js/filtros.js` | paso 2: opciones, carrusel y tarjeta "Ajustar" |
+| `js/resorte.js` | resorte de la píldora de pasos y del carrusel |
+| `js/inspector.js` | panel de una clase: fijar, excluir y cambiar por otra sección, con vista previa en la grilla |
 | `js/busqueda.js` | solver en el hilo principal o en el Worker |
 | `js/elecciones.js` | fijar, excluir y profesores (lo quiero / no) |
 | `js/deshacer.js` | aviso con "Deshacer" |
-| `js/dom.js` | `h()`, `$`, `llenar` y localStorage sin errores en modo privado |
-| `js/agentes.js` | herramientas WebMCP para el agente del usuario (ver `llms.txt`) |
-| `sw.js`, `manifest.webmanifest` | uso sin conexión / instalable |
-| `tools/csv-a-json.js` | `data/horarios.csv` → `data/ejemplo.json` |
+| `js/dom.js` | `h()`, `$`, `llenar`, `contar` y localStorage sin errores en modo privado |
+| `sw.js` | uso sin conexión |
+| `tools/csv-a-json.js` | `tests/datos.csv` → `tests/datos.json` |
+
+Ideas para después: [`docs/IDEAS.md`](docs/IDEAS.md).
 
 ## Datos
 
@@ -82,10 +82,6 @@ La UTP usa dos rejillas: períodos de 45 min cada 50 min desde las 7:00
 (6:00–6:55pm, 7:00–7:55pm…). Un bloque guarda inicio y fin en minutos desde
 las 0:00: `[dia, inicio, fin, tipo, aula, subgrupo?]`. Las filas seguidas de
 la misma clase (con ≤ 10 min de recreo) se unen en un bloque.
-
-Franjas por hora de inicio: mañana antes de 12:50, tarde antes de 5:00pm,
-noche después. Los bloques del formato anterior (`[dia, k, n, …]` en
-períodos) se convierten solos al cargar.
 
 ### Formato de un grupo
 
@@ -119,8 +115,8 @@ de maestría a la misma hora) no cuenta como choque entre sus secciones.
 
 ## Modelo
 
-Cada día se parte en celdas de 10 min desde las 7:00 (3 palabras de 32
-bits, hasta las 11:00pm). Los inicios de las dos rejillas caen en múltiplos
+Cada día se parte en celdas de 10 min desde las 0:00 (5 palabras de 32
+bits, el día entero). Los inicios de las dos rejillas caen en múltiplos
 de 10 y el fin se redondea hacia arriba, así que 7:45 y 7:50 o 6:55 y 7:00
 quedan pegadas, sin hueco ni choque. Dos secciones chocan si alguna palabra
 da `a[i] & b[i] ≠ 0` (con las reglas de subgrupos y mismo grupo de arriba).
@@ -129,12 +125,11 @@ Restricciones duras: exactamente una sección por materia y sin choques.
 
 Penalidad de una combinación $c$:
 
-$$P(c) = \sum_{s \in c} \text{pen}(s) + w_d \max(0, |D| - 1)\,[\text{menos días}] + w_h \cdot \text{celdas libres}$$
+$$P(c) = w_d \max(0, |D| - 1) + w_h \cdot \text{celdas libres}$$
 
 | Peso | Valor | Penaliza |
 |---|---|---|
-| horario | 10 | sección fuera del turno pedido |
-| dias | 20 | cada día después del primero (con "Ir menos días") |
+| dias | 0, 5, 20 o 60 | cada día después del primero, según el nivel; "Ir menos días" pone el nivel 2 |
 | hueco | 1 | cada celda de 10 min libre entre clases del mismo día (un período = 5) |
 
 ### Búsqueda
@@ -146,14 +141,13 @@ nodo revisa, para cada materia pendiente, qué secciones todavía caben
 - si una materia se quedó sin secciones, la rama se corta ahí;
 - se ramifica primero por la materia con menos secciones que caben;
 - la cota suma lo mínimo que todavía puede costar cada componente:
-  la mejor sección que cabe en cada materia pendiente; los días actuales
-  más los que alguna materia obliga a agregar; y los huecos actuales que
-  ninguna sección pendiente puede llenar.
+  los días actuales más los que alguna materia obliga a agregar, y los
+  huecos actuales que ninguna sección pendiente puede llenar.
 
 Si la cota no mejora a la peor del top-K, la rama se poda. El resultado es
 exacto, salvo que la búsqueda pase de 1.5 s: entonces devuelve lo mejor que
-encontró y la UI avisa que es parcial. Corre en un Web Worker, así que la
-página nunca se congela.
+encontró y la UI avisa que es parcial. Con más de un millón de
+combinaciones corre en un Web Worker; las chicas, en el hilo principal.
 
 Secciones fijadas: de esa materia solo se considera la fijada. Excluidas:
 no se consideran.
@@ -165,5 +159,5 @@ node --test tests/
 ```
 
 El solver se compara contra una fuerza bruta independiente (datos de
-ejemplo y 300 instancias aleatorias). `tests/rendimiento.test.js` fija los
+prueba y 300 instancias aleatorias). `tests/rendimiento.test.js` fija los
 casos que antes tardaban más de 20 s: tienen que terminar exactos.

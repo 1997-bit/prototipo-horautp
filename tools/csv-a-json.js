@@ -1,7 +1,8 @@
 // @ts-check
-// Uso: node tools/csv-a-json.js data/horarios.csv > data/ejemplo.json
+// Uso: node tools/csv-a-json.js tests/datos.csv > tests/datos.json
 
 import { readFileSync } from "node:fs";
+import { porHora } from "../js/modelo.js";
 import { diaIndex, minDesdeTexto } from "../js/periodos.js";
 
 /** @type {Record<string, string>} */
@@ -23,10 +24,10 @@ function leerCsv(texto) {
     filas.push(campos);
   }
   const [cab, ...resto] = filas;
-  return resto.map((f) => Object.fromEntries(cab.map((c, i) => [c, f[i].trim()])));
+  return resto.map((f) => Object.fromEntries(cab.map((c, i) => [c, (f[i] ?? "").trim()])));
 }
 
-const filas = leerCsv(readFileSync(process.argv[2] ?? "data/horarios.csv", "utf8"));
+const filas = leerCsv(readFileSync(process.argv[2] ?? "tests/datos.csv", "utf8"));
 
 /** @type {Map<string, import("../js/modelo.js").Grupo>} */
 const grupos = new Map();
@@ -49,7 +50,7 @@ for (const f of filas) {
 
 for (const g of grupos.values()) {
   g.materias.sort((a, b) => a.codhora - b.codhora);
-  for (const m of g.materias) m.bloques.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  for (const m of g.materias) m.bloques.sort(porHora);
 }
 
 // Una materia por línea.

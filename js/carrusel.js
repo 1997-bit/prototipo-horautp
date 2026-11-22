@@ -2,11 +2,8 @@
 // Carrusel de opciones: scroll con resorte y arrastre con mouse.
 
 import { quieto } from "./ajustes.js";
+import { FIRME, avanzar, dtEntre } from "./resorte.js";
 
-const RIGIDEZ = 520;
-const AMORTIGUACION = 38;
-const DT_MAX = 0.064; // s
-const SUBPASO = 0.004; // s: estable con esta rigidez
 const INERCIA = 250; // ms
 const UMBRAL_ARRASTRE = 4; // px
 
@@ -15,7 +12,8 @@ const UMBRAL_ARRASTRE = 4; // px
  * @param {HTMLElement} el
  */
 function resorteScroll(el) {
-  let x = 0, v = 0, destino = 0, cuadro = 0, ultimo = 0;
+  const r = { x: 0, v: 0, meta: 0, ...FIRME };
+  let cuadro = 0, ultimo = 0;
   const detener = () => {
     if (!cuadro) return;
     cancelAnimationFrame(cuadro);
@@ -23,21 +21,16 @@ function resorteScroll(el) {
     el.classList.remove("animando");
   };
   /** @param {number} t */
-  const avanzar = (t) => {
-    const dt = Math.min(DT_MAX, (t - ultimo) / 1000);
+  const cuadroSiguiente = (t) => {
+    avanzar(r, dtEntre(ultimo, t));
     ultimo = t;
-    const n = Math.max(1, Math.ceil(dt / SUBPASO)), h = dt / n;
-    for (let k = 0; k < n; k++) {
-      v += (-RIGIDEZ * (x - destino) - AMORTIGUACION * v) * h;
-      x += v * h;
-    }
-    el.scrollLeft = x;
-    if (Math.abs(x - destino) < 0.5 && Math.abs(v) < 10) {
-      el.scrollLeft = destino;
+    el.scrollLeft = r.x;
+    if (Math.abs(r.x - r.meta) < 0.5 && Math.abs(r.v) < 10) {
+      el.scrollLeft = r.meta;
       detener();
       return;
     }
-    cuadro = requestAnimationFrame(avanzar);
+    cuadro = requestAnimationFrame(cuadroSiguiente);
   };
   /** @param {number} d @param {number} [v0] velocidad inicial, px/s */
   const ir = (d, v0) => {
@@ -46,14 +39,14 @@ function resorteScroll(el) {
       return;
     }
     if (!cuadro) {
-      x = el.scrollLeft;
-      v = 0;
+      r.x = el.scrollLeft;
+      r.v = 0;
       ultimo = performance.now();
       el.classList.add("animando"); // el snap pelearía con el resorte
-      cuadro = requestAnimationFrame(avanzar);
+      cuadro = requestAnimationFrame(cuadroSiguiente);
     }
-    if (v0 !== undefined) v = v0;
-    destino = d;
+    if (v0 !== undefined) r.v = v0;
+    r.meta = d;
   };
   return { ir, detener };
 }

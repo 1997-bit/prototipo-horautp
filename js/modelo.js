@@ -5,7 +5,6 @@
 // la teoría más lo de esa letra, aunque sea solo la teoría.
 
 import { PALABRAS, marcar } from "./bits.js";
-import { finMin, inicioMin } from "./periodos.js";
 
 /**
  * [dia, inicio, fin, tipo, aula, subgrupo?] — horas en minutos desde las 0:00.
@@ -24,24 +23,11 @@ import { finMin, inicioMin } from "./periodos.js";
 /** @type {Record<string, string>} */
 const TIPOS = { C: "Clase", L: "Lab", CL: "Clase+Lab" };
 
+/** Por día y hora de inicio. @param {Bloque} a @param {Bloque} b */
+export const porHora = (a, b) => a[0] - b[0] || a[1] - b[1];
+
 /** @param {string} t */
 export const nombreTipo = (t) => TIPOS[t] ?? t;
-
-/**
- * Bloques de versiones anteriores, [dia, k, n, …] en períodos de 50 min.
- * @param {Grupo[]} grupos
- */
-export function migrarGrupos(grupos) {
-  for (const g of grupos) {
-    for (const m of g.materias) {
-      m.bloques = m.bloques.map((b) => {
-        const [d, k, n, ...resto] = b;
-        return /** @type {Bloque} */ (k < inicioMin(0) ? [d, inicioMin(k), finMin(k, n), ...resto] : b);
-      });
-    }
-  }
-  return grupos;
-}
 
 /** @param {Bloque[]} bloques @param {string} sub */
 function seccionDe(bloques, sub) {
@@ -53,7 +39,7 @@ function seccionDe(bloques, sub) {
   }
   return {
     sub,
-    bloques: [...bloques].sort((a, b) => a[0] - b[0] || a[1] - b[1]),
+    bloques: [...bloques].sort(porHora),
     masks,
     usos: masks.flatMap((mk, i) => (mk ? [i, mk] : [])),
     dias,
@@ -122,12 +108,17 @@ export function listarMaterias(secciones) {
 const mismoGrupo = (a, b) => a.codhora > 0 && b.codhora > 0 && !!a.grupo && a.grupo === b.grupo;
 
 /**
- * En el mismo grupo manda el horario oficial: lo que se pisa ahí es a propósito
- * (módulos de maestría); solo chocan subgrupos distintos.
+ * Mismo grupo: subgrupos distintos siempre chocan. Dos bloques a la misma hora
+ * en la misma aula son módulos de posgrado (2GP211) y no chocan; en aulas
+ * distintas, sí.
  * @param {Seccion} a @param {Seccion} b
  */
 export function chocan(a, b) {
-  if (mismoGrupo(a, b)) return !!a.sub && !!b.sub && a.sub !== b.sub;
+  if (mismoGrupo(a, b)) {
+    if (a.sub && b.sub && a.sub !== b.sub) return true;
+    return a.bloques.some(([d1, i1, f1, , aula1]) => b.bloques.some(([d2, i2, f2, , aula2]) =>
+      d1 === d2 && i1 < f2 && i2 < f1 && (!aula1 || aula1 !== aula2)));
+  }
   for (let i = 0; i < a.masks.length; i++) {
     if (a.masks[i] & b.masks[i]) return true;
   }

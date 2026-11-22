@@ -65,10 +65,12 @@ function pintarResultado(app, animar) {
     return;
   }
   nombrarClases();
-  document.startViewTransition(() => {
+  const t = document.startViewTransition(() => {
     renderOpciones(app);
     nombrarClases();
-  }).finished.finally(borrarNombres);
+  });
+  t.ready.catch(() => {}); // otra transición la saltó
+  t.finished.finally(borrarNombres);
 }
 
 /**
@@ -137,7 +139,7 @@ export function recalcular(app, previo = null) {
 function adelantar(app, previo) {
   const { requeridas, prefs } = app.estado;
   // Por codhora: las secciones se reconstruyen en cada cambio
-  const validas = new Set([...candidatas(app.secciones, requeridas, prefs).values()].flat().map((c) => c.s.codhora));
+  const validas = new Set([...candidatas(app.secciones, requeridas, prefs).values()].flat().map((s) => s.codhora));
   const quedan = previo.opciones.filter((o) => o.secciones.every((s) => validas.has(s.codhora)));
   if (!quedan.length) return;
   app.resultado = { estado: "OK", opciones: quedan, parcial: previo.parcial };

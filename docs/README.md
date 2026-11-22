@@ -9,7 +9,7 @@ Este documento explica el motor de la app. El motor lee el horario del portal de
 | 3 | [Modelo](03-modelo.md) | `js/modelo.js` |
 | 4 | [Preferencias](04-preferencias.md) | `js/preferencias.js` |
 | 5 | [Solver](05-solver.md) | `js/solver.js` |
-| 6 | [Integración](06-integracion.md) | `js/estado.js`, `js/busqueda.js`, `js/worker.js`, `js/agentes.js` |
+| 6 | [Integración](06-integracion.md) | `js/estado.js`, `js/busqueda.js`, `js/worker.js` |
 | 7 | [Pruebas](07-pruebas.md) | `tests/` |
 | — | [Ideas](IDEAS.md) | — |
 
@@ -46,7 +46,7 @@ Estos documentos usan cada término con un solo significado.
 | Subgrupo | Parte del grupo (A, B…) con laboratorios propios. |
 | Sección | La unidad que elige el solver: una materia y, si hay subgrupos, una letra. |
 | Opción | Una sección por materia, sin choques. |
-| Unidad | 10 minutos del día. La primera unidad empieza a las 7:00. |
+| Unidad | 10 minutos del día. La primera unidad empieza a las 0:00. |
 | Hueco | Tiempo libre entre dos clases del mismo día. |
 | Penalidad | Costo de una opción. Una penalidad menor es mejor. |
 

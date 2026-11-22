@@ -138,7 +138,7 @@ No uses el color de fondo para unir la grilla con la leyenda. El portal no siemp
 
 ## 1.4 JSON
 
-La entrada puede ser un grupo o una lista de grupos. Cada grupo necesita `grupo` (texto) y `materias` (lista). Después, el motor cambia el formato viejo de los bloques ([Formato viejo](03-modelo.md#32-formato-viejo)).
+La entrada puede ser un grupo o una lista de grupos. Cada grupo necesita `grupo` (texto) y `materias` (lista).
 
 ## 1.5 Materia a mano
 

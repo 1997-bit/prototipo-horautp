@@ -11,7 +11,7 @@ node --test tests/
 | Archivo | Prueba |
 |---|---|
 | `tests/entrada.test.js` | El parser con grupos del portal: 4GS111, 1LB421, una maestría con horas de 55 minutos, subgrupos y varias clases por celda. |
-| `tests/nucleo.test.js` | Horas, unidades, huecos, formato viejo, subgrupos, choques, preferencias, plan B y el solver comparado con la fuerza bruta. |
+| `tests/nucleo.test.js` | Horas, unidades, huecos, subgrupos, choques, preferencias, plan B y el solver comparado con la fuerza bruta. |
 | `tests/rendimiento.test.js` | Tres casos grandes. Cada uno debe terminar antes de `MS_MAX`. |
 | `tests/bruta.js` | La fuerza bruta y los generadores de datos al azar. |
 
@@ -19,8 +19,8 @@ node --test tests/
 
 `bruta(secciones, requeridas, prefs)` prueba todas las combinaciones y da la lista de penalidades en orden. No usa máscaras ni cotas:
 
-- Calcula las unidades de cada bloque con $\lfloor (\text{inicio} - 420)/10 \rfloor$ a $\lceil (\text{fin} - 420)/10 \rceil - 1$.
-- Aplica las mismas reglas de choque ([Choques](03-modelo.md#35-choques)).
+- Calcula las unidades de cada bloque con $\lfloor \text{inicio}/10 \rfloor$ a $\lceil \text{fin}/10 \rceil - 1$.
+- Aplica las mismas reglas de choque ([Choques](03-modelo.md#34-choques)).
 - Calcula las unidades libres de cada día como $(\text{última} - \text{primera} + 1) - |\text{ocupadas}|$.
 
 La prueba exige que las $K$ primeras penalidades del solver sean iguales a las de la fuerza bruta.
@@ -33,9 +33,9 @@ La prueba exige que las $K$ primeras penalidades del solver sean iguales a las d
 
 | Prueba | Casos |
 |---|---|
-| `ejemplo.json` × 4 grupos de preferencias × $K \in \{1, 3, 1000\}$ | 12 |
-| `sinteticos` × 7 grupos de preferencias | 350 |
-| `sinteticosMixtos` × 7 grupos de preferencias | 210 |
+| `tests/datos.json` × 4 grupos de preferencias × $K \in \{1, 3, 1000\}$ | 12 |
+| `sinteticos` × 8 grupos de preferencias | 400 |
+| `sinteticosMixtos` × 8 grupos de preferencias | 240 |
 
 ## 7.3 Datos reales
 
@@ -58,7 +58,7 @@ Un motor nuevo debe dar estos resultados.
 
 **Horas:** la tabla de [Hora de una fila](02-tiempo.md#22-hora-de-una-fila).
 
-**Huecos:** la tabla de [Huecos](02-tiempo.md#25-huecos).
+**Huecos:** la tabla de [Huecos](02-tiempo.md#24-huecos).
 
 **Celdas:** las tablas de [Bloques](01-entrada.md#bloques).
 
@@ -81,4 +81,6 @@ Un motor nuevo debe dar estos resultados.
 
 **Subgrupos 1TB221.** Con MICRO (teoría + lab B) y ÓPTICA (teoría + lab A) a la misma hora, el solver da 2 opciones: `AA` y `BB`.
 
-**Mismo grupo 2GP211.** Dos materias del grupo a la misma hora tienen solución. Las mismas materias en grupos distintos dan `SIN_SOLUCION`.
+**Mismo grupo 2GP211.** Dos materias del grupo a la misma hora y en la misma aula tienen solución. Las mismas materias en grupos distintos dan `SIN_SOLUCION`.
+
+**Mismo grupo 1GS134.** Dos materias del grupo a la misma hora en aulas distintas dan `SIN_SOLUCION`.

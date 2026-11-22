@@ -1,15 +1,14 @@
 // @ts-check
 // Paso 2: las opciones de horario, una por diapositiva, y su tabla de materias.
 
-import { buscar, recalcular } from "./busqueda.js";
+import { buscar } from "./busqueda.js";
 import { codigo, grilla, nombrePropio, porDia, punto } from "./calendario.js";
 import { animarCarrusel } from "./carrusel.js";
-import { conDeshacer } from "./deshacer.js";
 import { $, enfocar, h, llenar } from "./dom.js";
-import { alternarFija, estadoProfe, excluir, ponerEnMateria, profesoresDe, sinSalida } from "./elecciones.js";
-import { filtrar, filtros, segmentado } from "./filtros.js";
+import { filtros } from "./filtros.js";
+import { inspeccionar } from "./inspector.js";
 import { sigla } from "./modelo.js";
-import { K_POR_DEFECTO, MS_MAX, reemplazos } from "./solver.js";
+import { K_POR_DEFECTO, MS_MAX } from "./solver.js";
 
 /**
  * @typedef {import("./ui.js").App} App
@@ -103,8 +102,7 @@ export function renderOpciones(app) {
 function sinOpciones(app, r) {
   const { prefs } = app.estado;
   const nombre = (/** @type {string} */ c) => app.secciones.find((s) => s.codasig === c)?.asignatura ?? c;
-  const hayFiltros = prefs.fijas.length > 0 || prefs.excluidas.length > 0 || prefs.evitados.length > 0
-    || (prefs.soloTurno && prefs.horario);
+  const hayFiltros = prefs.fijas.length > 0 || prefs.excluidas.length > 0 || prefs.evitados.length > 0;
   // Con filtros, la salida son los chips
   const salida = !hayFiltros && h("a", { href: "#materias", class: "boton secundario" }, "Cambiar materias");
 
@@ -136,7 +134,7 @@ function pintarOpciones(app, r) {
     class: "tarjeta diapositiva",
     "aria-roledescription": "opción",
     "aria-label": `Opción ${i + 1} de ${total}`,
-  }, grilla(o.secciones, tono), porDia(o.secciones, tono)));
+  }, grilla(o.secciones, tono, (s, _, celda) => inspeccionar(app, o, s, celda, tono)), porDia(o.secciones, tono)));
   const carrusel = h("div", {
     class: "carrusel",
     tabindex: 0,
@@ -203,6 +201,22 @@ function pintarOpciones(app, r) {
   carrusel.scrollLeft = diapositivas[app.opcion].offsetLeft - diapositivas[0].offsetLeft;
 }
 
+/** Íconos de 16 px, trazo. */
+const ICONOS = {
+  fijar: '<path d="M8 10.5V14"/><path d="M5.5 2.5h5M6.5 2.5v3.25L4.5 8v1.5h7V8L9.5 5.75V2.5"/>',
+};
+
+/** @param {keyof typeof ICONOS} nombre */
+function icono(nombre) {
+  const el = h("span", { class: "icono", "aria-hidden": "true" });
+  el.innerHTML = `<svg viewBox="0 0 16 16">${ICONOS[nombre]}</svg>`;
+  return el;
+}
+
+/** Fijada: solo se suelta desde el inspector o el chip de Ajustar. */
+const marcaFija = () => h("span", { class: "marca-fija", title: "Fijada" },
+  icono("fijar"), h("span", { class: "oculto" }, "fijada"));
+
 /**
  * Anima solo las clases que cambiaron respecto a la opción anterior.
  * @param {App} app @param {Opcion} o @param {HTMLElement} diapositiva
@@ -225,7 +239,7 @@ function resaltarCambios(app, o, diapositiva) {
  * El scroll actualiza el resto.
  * @param {App} app @param {number} i
  */
-export function irAOpcion(app, i) {
+function irAOpcion(app, i) {
   const diapositivas = document.querySelectorAll("#contenido-opciones .diapositiva");
   const d = /** @type {HTMLElement | undefined} */ (diapositivas[i]);
   if (!d || !moverCarrusel) return;
@@ -234,58 +248,21 @@ export function irAOpcion(app, i) {
 
 // ---------- Tabla de materias de la opción ----------
 
-/** Materia cuya fila de profesores está abierta. @type {string | null} */
-let profAbierto = null;
-
 /** Texto y clase de cada columna. */
 const COLUMNAS = [
   ["Asignatura"],
   ["Grupo", "c-grupo"],
   ["C.Hora", "c-hora"],
   ["Profesor", "c-profe"],
-  ["", "c-acciones"],
 ];
 
-/** Lo que identifica una sección al inscribirse. @param {Seccion} s */
-const claveDe = (s) => codigo(s) || s.grupo || nombrePropio(s.profesor);
-
-/**
- * @param {Seccion[]} lista reemplazos, de mejor a peor
- */
-function planB(lista) {
-  if (!lista.length) return null;
-  const describir = (/** @type {Seccion} */ x) =>
-    [codigo(x), x.grupo, nombrePropio(x.profesor)].filter(Boolean).join(" · ");
-  const titulo = ["Si se llena:", ...lista.slice(0, 3).map(describir)].join("\n");
-  return h("small", { class: "plan-b", title: titulo },
-    h("span", { class: "oculto" }, "Si se llena: "),
-    h("span", { "aria-hidden": "true" }, "↳ "),
-    claveDe(lista[0]));
-}
-
-/**
- * Tocar el profesor abre los demás de esa materia.
- * @param {App} app @param {Opcion} o @param {Map<string, number>} tono
- */
+/** @param {App} app @param {Opcion} o @param {Map<string, number>} tono */
 function tablaMaterias(app, o, tono) {
-  const planes = reemplazos(app.secciones, o.secciones, app.estado.prefs);
-  /** @param {Event} e */
-  const repintar = (e) => {
-    const boton = /** @type {HTMLElement} */ (e.currentTarget);
-    const tabla = boton.closest(".materias-opcion");
-    if (!tabla) return;
-    tabla.replaceChildren(...tablaMaterias(app, o, tono));
-    enfocar(tabla, boton.dataset.foco ?? "");
-  };
-  const filas = o.secciones.map((s) => {
-    const fila = h("tr", {},
-      celdaAsignatura(s, tono),
-      h("td", { class: "codigo", title: s.sub ? `Subgrupo ${s.sub}` : null }, s.grupo || "—", s.sub && ` (${s.sub})`),
-      h("td", { class: "codigo hora-plan" }, h("span", {}, codigo(s) || "—"), planB(planes.get(s.codhora) ?? [])),
-      celdaProfesor(app, s, repintar),
-      celdaAcciones(app, s));
-    return profAbierto === s.codasig ? [fila, filaProfes(app, s)] : fila;
-  });
+  const filas = o.secciones.map((s) => h("tr", {},
+    celdaAsignatura(s, tono),
+    h("td", { class: "codigo", title: s.sub ? `Subgrupo ${s.sub}` : null }, s.grupo || "—", s.sub && ` (${s.sub})`),
+    h("td", { class: "codigo" }, codigo(s) || "—", app.estado.prefs.fijas.includes(s.codhora) && marcaFija()),
+    h("td", {}, nombrePropio(s.profesor))));
   // Anchos fijos: al pasar de opción las columnas no bailan con el largo de los nombres
   return [
     h("div", { class: "tabla" }, h("table", { class: "tabla-materias" },
@@ -299,70 +276,3 @@ const celdaAsignatura = (s, tono) => h("td", {},
   punto(tono.get(s.codasig)),
   s.asignatura,
   h("small", { class: "sigla-leyenda", "aria-hidden": "true" }, ` ${sigla(s.asignatura)}`));
-
-/** @param {App} app @param {Seccion} s @param {(e: Event) => void} repintar */
-function celdaProfesor(app, s, repintar) {
-  const nombre = nombrePropio(s.profesor);
-  if (profesoresDe(app, s.codasig).length <= 1) return h("td", {}, nombre);
-  const abierta = profAbierto === s.codasig;
-  return h("td", {}, h("button", {
-    type: "button",
-    class: "enlace-prof",
-    "aria-expanded": String(abierta),
-    "data-foco": `abrir:${s.codasig}`,
-    title: "Elegir profesor",
-    onclick: (/** @type {Event} */ e) => {
-      profAbierto = abierta ? null : s.codasig;
-      repintar(e);
-    },
-  }, nombre, h("span", { class: "flecha", "aria-hidden": "true" }, "▾")));
-}
-
-/** @param {App} app @param {Seccion} s */
-function celdaAcciones(app, s) {
-  const fija = app.estado.prefs.fijas.includes(s.codhora);
-  const fijar = h("button", {
-    type: "button",
-    class: `chico ${fija ? "" : "secundario"}`,
-    "aria-pressed": String(fija),
-    title: fija ? "Soltar: volver a considerar las otras secciones" : "Fijar: usar siempre esta sección",
-    onclick: () => {
-      const previo = fija ? null : app.resultado; // soltar agranda las combinaciones
-      alternarFija(app, s);
-      recalcular(app, previo);
-    },
-  }, fija ? "Fijada" : "Fijar");
-  const quitar = h("button", {
-    type: "button",
-    class: "chico fantasma",
-    title: "Excluir: no usar nunca esta sección",
-    onclick: () => conDeshacer(app, `${s.asignatura} · ${s.grupo} excluida`, () => {
-      const previo = app.resultado;
-      excluir(app, s);
-      recalcular(app, previo);
-    }),
-  }, "Excluir");
-  return h("td", { class: "acciones-fila" }, fijar, quitar);
-}
-
-/** Igual que en Materias. @param {App} app @param {Seccion} s */
-function filaProfes(app, s) {
-  const opcionesProfe = (/** @type {string} */ p) => {
-    const estado = estadoProfe(app, s.codasig, p);
-    const bloqueado = estado !== "no" && sinSalida(app, p);
-    /** @type {[string, string, string?, boolean?][]} */
-    const opciones = [
-      ["quiero", "Lo quiero", "Solo sus secciones en esta materia"],
-      ["", "Da igual"],
-      ["no", "No", bloqueado ? "Es el único que queda" : "Que no salga en ninguna materia", bloqueado],
-    ];
-    const etiqueta = `Profesor ${nombrePropio(p)} en ${s.asignatura}`;
-    const elegir = (/** @type {string} */ v) => filtrar(app, () => ponerEnMateria(app, s.codasig, p, v));
-    return h("li", { "data-estado": estado },
-      h("span", { class: "nombre-profe" }, nombrePropio(p)),
-      segmentado(etiqueta, opciones, estado, elegir, "chico"));
-  };
-  return h("tr", { class: "fila-profes" },
-    h("td", { colSpan: COLUMNAS.length },
-      h("ul", { class: "profes", role: "list" }, profesoresDe(app, s.codasig).map(opcionesProfe))));
-}

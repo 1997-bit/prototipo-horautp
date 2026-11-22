@@ -10,7 +10,6 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f4f4f4" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="css/style.css">
   <script src="js/tema.js"></script>
   <script type="module" src="js/main.js"></script>
@@ -22,19 +21,19 @@
   <link rel="modulepreload" href="js/elecciones.js">
   <link rel="modulepreload" href="js/filtros.js">
   <link rel="modulepreload" href="js/horario.js">
+  <link rel="modulepreload" href="js/inspector.js">
   <link rel="modulepreload" href="js/manual.js">
   <link rel="modulepreload" href="js/materias.js">
   <link rel="modulepreload" href="js/calendario.js">
   <link rel="modulepreload" href="js/dom.js">
-  <link rel="modulepreload" href="js/agentes.js">
   <link rel="modulepreload" href="js/ajustes.js">
-  <link rel="modulepreload" href="js/atajos.js">
   <link rel="modulepreload" href="js/estado.js">
   <link rel="modulepreload" href="js/modelo.js">
   <link rel="modulepreload" href="js/entrada.js">
   <link rel="modulepreload" href="js/solver.js">
   <link rel="modulepreload" href="js/preferencias.js">
   <link rel="modulepreload" href="js/periodos.js">
+  <link rel="modulepreload" href="js/resorte.js">
   <link rel="modulepreload" href="js/bits.js">
 </head>
 <body>
@@ -42,8 +41,8 @@
     <nav aria-label="Pasos">
       <ol id="pasos" class="vidrio">
         <li class="pildora" aria-hidden="true"></li>
-        <li><a href="#materias" data-atajo="g m" aria-current="step"><span>Materias</span></a></li>
-        <li><a href="#opciones" data-atajo="g h"><span>Horario</span></a></li>
+        <li><a href="#materias" aria-current="step"><span>Materias</span></a></li>
+        <li><a href="#opciones"><span>Horario</span></a></li>
       </ol>
     </nav>
     <div class="herramientas vidrio">
@@ -55,14 +54,13 @@
     <section id="materias" aria-labelledby="t-materias">
       <div class="cabeza">
         <h2 id="t-materias" tabindex="-1">Materias</h2>
-        <p class="acciones vidrio-movil"><a href="#opciones" class="boton" data-atajo="Mod+Enter" data-atajo-texto="Paso siguiente">Ver horario</a></p>
+        <p class="acciones vidrio-movil"><a href="#opciones" class="boton">Ver horario</a></p>
       </div>
       <div id="grupos" class="fila grupos"></div>
       <div id="entrada">
         <div id="agregar" class="tarjeta agregar">
           <label for="pegar" class="titulo">Pega el horario de tu grupo</label>
-          <textarea id="pegar" rows="3" data-atajo="/" data-atajo-texto="Ir al campo para pegar"
-            placeholder="Matrícula → Grupos por Asignatura → Horario del Grupo. Ctrl+A, Ctrl+C y pega aquí."></textarea>
+          <textarea id="pegar" rows="3" placeholder="Matrícula → Grupos por Asignatura → Horario del Grupo. Ctrl+A, Ctrl+C y pega aquí."></textarea>
           <p class="fila">
             <label class="boton secundario">Subir archivo
               <input type="file" id="archivos" accept=".html,.htm,.json" multiple hidden>
@@ -102,12 +100,6 @@
       <button class="secundario" value="cancelar" autofocus>Cancelar</button>
       <button class="peligro" value="borrar">Borrar</button>
     </form>
-  </dialog>
-
-  <dialog id="dialogo-atajos" class="dialogo" aria-labelledby="atajos-titulo" closedby="any">
-    <h2 id="atajos-titulo">Atajos de teclado</h2>
-    <div id="contenido-atajos"></div>
-    <form method="dialog" class="acciones"><button class="secundario" autofocus>Cerrar</button></form>
   </dialog>
 
   <div id="tostada" class="tostada" role="status" aria-live="polite"></div>

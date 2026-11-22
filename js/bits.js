@@ -1,11 +1,10 @@
 // @ts-check
-// Ocupación por día en celdas de 10 min desde las 7:00: 3 palabras de 32 bits
-// (7:00–23:00). Entran las dos rejillas de la UTP (50 y 60 min) sin choques
+// Ocupación por día en celdas de 10 min desde las 0:00: 5 palabras de 32 bits
+// (el día entero). Entran las dos rejillas de la UTP (50 y 60 min) sin choques
 // falsos: los inicios caen en múltiplos de 10 y el fin se redondea hacia arriba.
 
-export const CELDA_MIN = 10;
-export const PALABRAS = 3;
-const BASE = 7 * 60;
+const CELDA_MIN = 10;
+export const PALABRAS = 5;
 const CELDAS = PALABRAS * 32;
 
 /** Popcount (SWAR). @param {number} x */
@@ -15,11 +14,14 @@ export function popcount(x) {
   return Math.imul((x + (x >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24;
 }
 
+/** Índice del bit más bajo encendido. @param {number} x */
+export const bitBajo = (x) => 31 - Math.clz32(x & -x);
+
 /** Bits lo..hi (0–31) encendidos. @param {number} lo @param {number} hi */
 const tramo = (lo, hi) => (-1 >>> (31 - hi)) & (-1 << lo);
 
 /** @param {number} min */
-const celda = (min) => Math.min(CELDAS, Math.max(0, (min - BASE) / CELDA_MIN));
+const celda = (min) => Math.min(CELDAS, Math.max(0, min / CELDA_MIN));
 
 /**
  * Marca [ini, fin) del día d en masks (7 × PALABRAS).
@@ -44,7 +46,7 @@ export function huecosDia(masks, i0, out) {
   for (let w = 0; w < PALABRAS; w++) {
     const m = masks[i0 + w];
     if (!m) continue;
-    if (primera < 0) primera = w * 32 + (31 - Math.clz32(m & -m));
+    if (primera < 0) primera = w * 32 + bitBajo(m);
     ultima = w * 32 + (31 - Math.clz32(m));
   }
   let n = 0;

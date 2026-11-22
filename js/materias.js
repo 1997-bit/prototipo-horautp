@@ -3,7 +3,7 @@
 
 import { nombrePropio } from "./calendario.js";
 import { conDeshacer, iniciarTostada } from "./deshacer.js";
-import { $, enfocar, h, llenar, marcado } from "./dom.js";
+import { $, contar, enfocar, h, llenar, marcado } from "./dom.js";
 import { estadoProfe, ponerEnMateria, profesoresDe, sinSalida } from "./elecciones.js";
 import { gruposDesdeJson, grupoDesdeHtml } from "./entrada.js";
 import { actualizarSugerencias, formularioManual } from "./manual.js";
@@ -18,6 +18,7 @@ import { cambio } from "./ui.js";
 
 const RE_JSON = /^\s*[[{]/;
 const RE_TABLA = /<table[\s>]/i;
+const RE_EXT_JSON = /\.json$/i;
 
 /** @param {string} texto @param {"ok" | "error"} [tipo] */
 function mensaje(texto, tipo = "ok") {
@@ -69,7 +70,7 @@ async function leerArchivos(app, lista) {
     const archivos = [...lista];
     const textos = await Promise.all(archivos.map((f) => f.text()));
     const grupos = archivos.flatMap((f, i) =>
-      f.name.endsWith(".json") ? gruposDesdeJson(JSON.parse(textos[i])) : [grupoDesdeHtml(textos[i])]);
+      RE_EXT_JSON.test(f.name) ? gruposDesdeJson(JSON.parse(textos[i])) : [grupoDesdeHtml(textos[i])]);
     if (grupos.length) agregarGrupos(app, grupos);
   } catch (err) {
     mensajeError(err);
@@ -84,7 +85,7 @@ function iniciarPegar(app) {
     const datos = e.clipboardData;
     leerPegado(app, datos?.getData("text/html") ?? "", datos?.getData("text/plain") ?? "");
   });
-  // Un agente llena el campo sin evento paste
+  // Escrito o llenado sin evento paste
   pegar.addEventListener("input", () => {
     const v = pegar.value;
     if (RE_TABLA.test(v)) {
@@ -166,7 +167,7 @@ export function iniciarDatos(app) {
 }
 
 /** @param {Grupo} g */
-const cuantas = (g) => `${g.materias.length} ${g.materias.length === 1 ? "materia" : "materias"}`;
+const cuantas = (g) => contar(g.materias.length, "materia", "materias");
 
 /** @param {...(string | false | undefined)} partes */
 const juntar = (...partes) => partes.filter(Boolean).join(" · ");
@@ -188,15 +189,41 @@ function chipGrupo(g) {
   };
 }
 
-/** @param {App} app @param {Grupo} g */
-function botonGrupo(app, g) {
+/** El valor más repetido. @param {string[]} xs */
+function moda(xs) {
+  /** @type {Map<string, number>} */
+  const n = new Map();
+  for (const x of xs) if (x) n.set(x, (n.get(x) ?? 0) + 1);
+  return [...n].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+}
+
+/**
+ * Grupos del portal de otro período o sede que la mayoría: se mezclarían sin aviso.
+ * @param {Grupo[]} grupos @returns {Map<Grupo, string>} grupo → qué difiere
+ */
+function distintos(grupos) {
+  const portal = grupos.filter((g) => !g.manual);
+  const periodo = moda(portal.map((g) => g.periodo));
+  const sede = moda(portal.map((g) => g.sede ?? ""));
+  return new Map(portal.flatMap((g) => {
+    const dif = [
+      g.periodo && periodo && g.periodo !== periodo && `Otro período: ${g.periodo}`,
+      g.sede && sede && g.sede !== sede && `Otra sede: ${g.sede}`,
+    ].filter(Boolean).join(" · ");
+    return dif ? [[g, dif]] : [];
+  }));
+}
+
+/** @param {App} app @param {Grupo} g @param {string} [dif] */
+function botonGrupo(app, g, dif) {
   const c = chipGrupo(g);
   const quitar = () => conDeshacer(app, c.quitado, () => {
     app.estado.grupos = app.estado.grupos.filter((x) => x !== g);
     cambio(app);
     renderMaterias(app);
   });
-  return h("span", { class: "grupo", title: c.titulo },
+  return h("span", { class: dif ? "grupo distinto" : "grupo", title: dif ? `${dif}\n${c.titulo}` : c.titulo },
+    dif && h("span", { class: "oculto" }, `${dif}: `),
     c.texto,
     h("button", { type: "button", class: "quitar", "aria-label": `Quitar ${c.texto}`, onclick: quitar }, "×"));
 }
@@ -204,16 +231,14 @@ function botonGrupo(app, g) {
 /** @param {App} app */
 export function renderMaterias(app) {
   if (!$("a-mano").childElementCount) formularioManual(app);
-  llenar("grupos", app.estado.grupos.map((g) => botonGrupo(app, g)));
+  const dif = distintos(app.estado.grupos);
+  llenar("grupos", app.estado.grupos.map((g) => botonGrupo(app, g, dif.get(g))));
 
   const materias = listarMaterias(app.secciones);
   if (!materias.length) {
     llenar("contenido-materias");
     return;
   }
-  const disponibles = new Set(materias.map((m) => m.codasig));
-  app.estado.requeridas = app.estado.requeridas.filter((c) => disponibles.has(c));
-
   llenar("contenido-materias",
     h("fieldset", { class: "tarjeta" },
       h("legend", {}, "¿Cuáles vas a inscribir?"),
@@ -238,27 +263,29 @@ function filaMateria(app, m) {
       h("span", {},
         h("b", {}, m.asignatura),
         cuentaSecciones(app, m.codasig, m.secciones))),
-    elegida && profesMateria(app, m.codasig));
+    profesMateria(app, m.codasig, elegida));
 }
 
 /**
- * "1 de 3 secciones", o nada.
+ * "1 de 3", o nada. Va en la línea del título para no mover la tarjeta.
  * @param {App} app @param {string} codasig @param {number} total
  */
 function cuentaSecciones(app, codasig, total) {
   const vivas = app.secciones.filter((s) => s.codasig === codasig && !descartada(s, app.estado.prefs));
   const quedan = new Set(vivas.map((s) => s.codhora)).size;
   if (quedan >= total) return null;
-  return h("small", {}, `${quedan} de ${total} ${total === 1 ? "sección" : "secciones"}`);
+  const texto = `${quedan} de ${contar(total, "sección", "secciones")}`;
+  return h("small", { title: texto }, h("span", { "aria-hidden": "true" }, `${quedan} de ${total}`), h("span", { class: "oculto" }, texto));
 }
 
 const ESTADO_PROFE = { "": "da igual", quiero: "lo quieres", no: "no lo quieres" };
 
 /**
- * Tocar uno lo saca de todas sus materias.
- * @param {App} app @param {string} codasig
+ * Tocar uno lo saca de todas sus materias. Sin elegir, quedan visibles e inertes
+ * para que la tarjeta no cambie de alto.
+ * @param {App} app @param {string} codasig @param {boolean} elegida
  */
-function profesMateria(app, codasig) {
+function profesMateria(app, codasig, elegida) {
   const solo = app.estado.prefs.solo[codasig] ?? [];
   const chip = (/** @type {string} */ p) => {
     const estado = estadoProfe(app, codasig, p);
@@ -282,6 +309,6 @@ function profesMateria(app, codasig) {
     p ? nombrePropio(p) : "Sin profesor",
     h("span", { class: "oculto" }, `: ${ESTADO_PROFE[estado]}`)));
   };
-  return h("ul", { class: "profes-materia", role: "list", "aria-label": "Profesores" },
+  return h("ul", { class: "profes-materia", role: "list", "aria-label": "Profesores", inert: !elegida },
     profesoresDe(app, codasig).map(chip));
 }
