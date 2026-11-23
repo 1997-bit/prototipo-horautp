@@ -2,7 +2,7 @@
 // copia guardada. Las peticiones saltan el caché HTTP: si no, GitHub Pages
 // (max-age=600) daría archivos viejos aunque el SW sea nuevo.
 
-const CACHE = "horautp-v49";
+const CACHE = "horautp-v52";
 const ORIGEN = `${location.origin}/`;
 const ARCHIVOS = [
   "./",

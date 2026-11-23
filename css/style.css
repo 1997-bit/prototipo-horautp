@@ -880,6 +880,24 @@ legend + * { clear: both; }
 }
 
 .grilla, .tabla { overflow-x: auto; margin: 0; }
+
+/* Bordes difusos solo donde queda por desplazar */
+@property --fade-ini { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --fade-fin { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes bordes {
+  0% { --fade-ini: 0px; --fade-fin: 2rem; }
+  10%, 90% { --fade-ini: 2rem; --fade-fin: 2rem; }
+  100% { --fade-ini: 2rem; --fade-fin: 0px; }
+}
+@supports (animation-timeline: scroll()) {
+  #pasos, .tabla, .grilla {
+    mask: linear-gradient(to right, #0000, #000 var(--fade-ini) calc(100% - var(--fade-fin)), #0000);
+    animation: bordes linear both;
+    animation-timeline: scroll(self inline);
+  }
+  /* La columna de horas es fija: sin borde inicial */
+  .grilla { mask: linear-gradient(to right, #000 calc(100% - var(--fade-fin)), #0000); }
+}
 table { border-collapse: collapse; width: 100%; font-size: .85rem; }
 th, td { border-bottom: 1px solid var(--borde); padding: .45rem .5rem; text-align: left; vertical-align: top; }
 thead th { color: var(--apagado); font-size: .62rem; border-bottom-color: var(--borde-fuerte); }

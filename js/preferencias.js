@@ -46,3 +46,17 @@ export function descartada(s, prefs) {
   const solo = prefs.solo?.[s.codasig];
   return !!solo?.length && !solo.includes(s.profesor);
 }
+
+/**
+ * Fuera lo que apunta a secciones que ya no están: un C.HORA a mano se reusa.
+ * @param {{requeridas: string[], prefs: {fijas: number[], excluidas: number[]}}} estado
+ * @param {Seccion[]} secciones
+ */
+export function podar(estado, secciones) {
+  const materias = new Set(secciones.map((s) => s.codasig));
+  const codhoras = new Set(secciones.map((s) => s.codhora));
+  const { prefs } = estado;
+  estado.requeridas = estado.requeridas.filter((c) => materias.has(c));
+  prefs.fijas = prefs.fijas.filter((c) => codhoras.has(c));
+  prefs.excluidas = prefs.excluidas.filter((c) => codhoras.has(c));
+}

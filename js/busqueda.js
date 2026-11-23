@@ -14,15 +14,14 @@ import { candidatas, resolver } from "./solver.js";
 /** Combinaciones posibles a partir de las que va al Worker. */
 const UMBRAL = 1e6;
 
-/** @type {Worker | null} */
+/** Ocupado si y solo si app.enCurso. @type {Worker | null} */
 let worker = null;
-let trabajando = false;
 
-export function cortarWorker() {
-  if (!trabajando) return;
+/** Antes de cambiar app.enCurso. @param {App} app */
+export function cortarWorker(app) {
+  if (!app.enCurso) return;
   worker?.terminate();
   worker = null;
-  trabajando = false;
 }
 
 /** @param {App} app */
@@ -74,21 +73,29 @@ function pintarResultado(app, animar) {
 }
 
 /**
- * Chico: deja app.resultado y devuelve true sin pintar. Grande: Worker.
+ * Chico, o sin Worker: deja app.resultado y devuelve true sin pintar. Grande: Worker.
  * @param {App} app
  */
 export function buscar(app) {
+  cortarWorker(app);
   const id = ++app.pedido;
   const { requeridas, prefs } = app.estado;
-  if (tamano(app) <= UMBRAL) {
-    const r = resolver(app.secciones, requeridas, prefs);
-    cortarWorker();
+  const yaListo = () => {
     app.enCurso = 0;
-    app.resultado = r;
+    app.resultado = resolver(app.secciones, requeridas, prefs);
     app.opcion = 0;
     return true;
-  }
+  };
+  if (tamano(app) <= UMBRAL) return yaListo();
 
+  /** @type {Worker} */
+  let w;
+  try {
+    w = worker ?? new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
+  } catch {
+    return yaListo();
+  }
+  worker = w;
   app.enCurso = id;
   const listo = (/** @type {Resultado} */ r) => {
     if (app.enCurso !== id) return;
@@ -100,26 +107,14 @@ export function buscar(app) {
     const atenuada = $("contenido-opciones").getAttribute("aria-busy") === "true";
     pintarResultado(app, !previa && atenuada);
   };
-  const enHilo = () => listo(resolver(app.secciones, requeridas, prefs));
-  try {
-    cortarWorker();
-    worker ??= new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
-    trabajando = true;
-    worker.onmessage = (e) => {
-      trabajando = false;
-      listo(e.data.resultado);
-    };
-    worker.onerror = (e) => {
-      e.preventDefault();
-      worker?.terminate();
-      worker = null;
-      trabajando = false;
-      enHilo();
-    };
-    worker.postMessage({ id, secciones: app.secciones, requeridas, prefs });
-  } catch {
-    enHilo();
-  }
+  w.onmessage = (e) => listo(e.data.resultado);
+  w.onerror = (e) => {
+    e.preventDefault();
+    w.terminate();
+    if (worker === w) worker = null;
+    listo(resolver(app.secciones, requeridas, prefs));
+  };
+  w.postMessage({ id, secciones: app.secciones, requeridas, prefs });
   return false;
 }
 

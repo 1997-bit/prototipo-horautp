@@ -5,8 +5,10 @@ import { cortarWorker } from "./busqueda.js";
 import { cerrarAviso } from "./deshacer.js";
 import { guardar } from "./estado.js";
 import { renderOpciones } from "./horario.js";
+import { cerrarInspector } from "./inspector.js";
 import { renderMaterias } from "./materias.js";
 import { construirSecciones } from "./modelo.js";
+import { podar } from "./preferencias.js";
 
 /**
  * @typedef {import("./estado.js").Estado} Estado
@@ -30,15 +32,15 @@ export const repintar = (app) => PASOS[pasoActual()](app);
 
 /**
  * Lo calculado ya no vale; el deshacer viejo pisaría lo nuevo.
- * Las requeridas sin secciones (grupo quitado) salen aquí, antes de guardar.
+ * Lo que apunta a secciones quitadas sale aquí, antes de guardar.
  * @param {App} app
  */
 export function descartar(app) {
-  cortarWorker();
+  cortarWorker(app);
   cerrarAviso();
+  cerrarInspector();
   app.secciones = construirSecciones(app.estado.grupos);
-  const hay = new Set(app.secciones.map((s) => s.codasig));
-  app.estado.requeridas = app.estado.requeridas.filter((c) => hay.has(c));
+  podar(app.estado, app.secciones);
   app.resultado = null;
   app.opcion = 0;
   app.enCurso = 0;

@@ -38,7 +38,7 @@ function crearPanel() {
   return el;
 }
 
-function cerrarInspector() {
+export function cerrarInspector() {
   if (panel?.matches(":popover-open")) panel.hidePopover();
 }
 

@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { grupoDesdeCrudo, grupoManual, leerCelda, leerCeldas } from "../js/entrada.js";
+import { construirSecciones } from "../js/modelo.js";
 import { finMin, inicioMin } from "../js/periodos.js";
+import { podar } from "../js/preferencias.js";
+import { resolver } from "../js/solver.js";
 
 /** Período k de 50 min, n seguidos → bloque en minutos. */
 const P = (d, k, n, tipo, aula) => [d, inicioMin(k), finMin(k, n), tipo, aula];
@@ -127,6 +130,20 @@ test("materia a mano: se une a la del portal por nombre", () => {
   const otra = grupoManual({ asignatura: "Redes", profesor: "", grupo: "", bloques: [P(0, 0, 1, "C", "")] }, [portal, g]);
   assert.equal(otra.materias[0].codhora, -2);
   assert.equal(otra.materias[0].codasig, "M-REDES");
+});
+
+test("materia a mano: no hereda prefs de una quitada con el mismo C.HORA", () => {
+  const datos = (asignatura) => ({ asignatura, profesor: "", grupo: "", bloques: [P(0, 0, 1, "C", "")] });
+  const a = grupoManual(datos("Redes"), []);
+  const estado = { grupos: [a], requeridas: [a.materias[0].codasig], prefs: { fijas: [-1], excluidas: [-1] } };
+  estado.grupos = [];
+  podar(estado, construirSecciones(estado.grupos));
+  assert.deepEqual(estado, { grupos: [], requeridas: [], prefs: { fijas: [], excluidas: [] } });
+
+  const b = grupoManual(datos("Ética"), estado.grupos);
+  assert.equal(b.materias[0].codhora, -1);
+  const secciones = construirSecciones([b]);
+  assert.equal(resolver(secciones, [b.materias[0].codasig], estado.prefs).estado, "OK");
 });
 
 test("materia a mano: errores", () => {
