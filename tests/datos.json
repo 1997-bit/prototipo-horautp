@@ -1,0 +1,29 @@
+[
+  {"grupo": "1GS232", "periodo": "II-2026", "materias": [
+    {"codasig":"8408","codhora":2679,"asignatura":"DES. SOFT. VIII","profesor":"CALDERON, TOMAS","email":"tomas.calderon@utp.ac.pa","bloques":[[1,1070,1165,"C","3-301"],[3,1070,1165,"L","3-403"],[3,1170,1215,"C","3-403"]]},
+    {"codasig":"8410","codhora":2680,"asignatura":"REDES DE COMPUTADORAS","profesor":"MARTINEZ, GUSTAVO","email":"gustavo.martinez@utp.ac.pa","bloques":[[2,1170,1215,"C","3-308"],[2,1220,1315,"L","3-402"],[4,1220,1315,"C","3-311"]]},
+    {"codasig":"1480","codhora":2681,"asignatura":"ING. DE SOFT. APLICADA III","profesor":"MURILLO, ARTURO","email":"arturo.murillo@utp.ac.pa","bloques":[[2,1070,1165,"C","3-308"],[4,1070,1215,"L","3-413"]]},
+    {"codasig":"1481","codhora":2682,"asignatura":"SISTEMAS OPERATIVOS","profesor":"ZURITA, ARMANDO","email":"armando.zurita@utp.ac.pa","bloques":[[0,1070,1165,"L","3-401"],[1,1170,1265,"C","3-301"],[3,1220,1315,"L","3-404"]]},
+    {"codasig":"1482","codhora":2683,"asignatura":"LEG. LAB. E INFORMATICA","profesor":"PEREZ, MARITZA","email":"marltza.perez@utp.ac.pa","bloques":[[0,1170,1265,"C","3-301"],[1,1270,1315,"L","3-301"]]}
+  ]},
+  {"grupo": "1GS231", "periodo": "II-2026", "materias": [
+    {"codasig":"8408","codhora":2674,"asignatura":"DES. SOFT. VIII","profesor":"CALDERON, TOMAS","email":"tomas.calderon@utp.ac.pa","bloques":[[0,1070,1165,"L","3-404"],[2,1070,1215,"C","3-306"]]},
+    {"codasig":"8410","codhora":2675,"asignatura":"REDES DE COMPUTADORAS","profesor":"CONTRERAS, MARQUELA","email":"marquela.contreras@utp.ac.pa","bloques":[[1,1170,1215,"C","3-310"],[1,1220,1315,"L","3-402"],[3,1220,1315,"C","3-301"]]},
+    {"codasig":"1480","codhora":2676,"asignatura":"ING. DE SOFT. APLICADA III","profesor":"SARMIENTO, MARIA DE","email":"maria.mosquera1@utp.ac.pa","bloques":[[1,1070,1165,"C","3-305"],[3,1070,1215,"L","3-413"]]},
+    {"codasig":"1481","codhora":2677,"asignatura":"SISTEMAS OPERATIVOS","profesor":"ZURITA, ARMANDO","email":"armando.zurita@utp.ac.pa","bloques":[[0,1170,1265,"C","3-305"],[2,1220,1315,"L","3-404"],[4,1070,1165,"L","3-412"]]},
+    {"codasig":"1482","codhora":2678,"asignatura":"LEG. LAB. E INFORMATICA","profesor":"DIAZ, JORGE","email":"jorge.diaz@utp.ac.pa","bloques":[[0,1270,1315,"L","3-305"],[4,1170,1265,"C","3-301"]]}
+  ]},
+  {"grupo": "1GS212", "periodo": "II-2026", "materias": [
+    {"codasig":"1474","codhora":2606,"asignatura":"FUND. MATEMATICA II","profesor":"SEGURA, ALBERTO","email":"alberto.segura1@utp.ac.pa","bloques":[[3,1220,1365,"C","3-420"],[4,1070,1165,"L","3-420"]]}
+  ]},
+  {"grupo": "1GS211", "periodo": "II-2026", "materias": [
+    {"codasig":"1474","codhora":2600,"asignatura":"FUND. MATEMATICA II","profesor":"MORALES, JUAN","email":"juan.morales9@utp.ac.pa","bloques":[[0,1220,1365,"C","3-313"],[4,1220,1315,"L","3-302"]]}
+  ]},
+  {"grupo": "1GS134", "periodo": "II-2026", "materias": [
+    {"codasig":"8408","codhora":2669,"asignatura":"DES. SOFT. VIII","profesor":"RODRIGUEZ, KEXY","email":"kexy.rodriguez@utp.ac.pa","bloques":[[0,770,915,"C","3-319"],[2,770,865,"L","3-409"]]},
+    {"codasig":"8410","codhora":2670,"asignatura":"REDES DE COMPUTADORAS","profesor":"BOSSO, MOISES","email":"moises.bosso@utp.ac.pa","bloques":[[1,770,915,"L","3-402"],[1,920,965,"C","3-315"],[4,770,865,"C","3-319"]]},
+    {"codasig":"1480","codhora":2671,"asignatura":"ING. DE SOFT. APLICADA III","profesor":"QUINTERO, ERIKA","email":"erika.quintero@utp.ac.pa","bloques":[[2,870,1015,"L","3-411"],[3,920,1015,"C","3-306"]]},
+    {"codasig":"1481","codhora":2672,"asignatura":"SISTEMAS OPERATIVOS","profesor":"JARAMILLO, LOURDES","email":"lourdes.jaramillo@utp.ac.pa","bloques":[[0,920,1015,"L","3-411"],[1,920,1015,"L","3-408"],[3,770,865,"C","3-316"]]},
+    {"codasig":"1482","codhora":2673,"asignatura":"LEG. LAB. E INFORMATICA","profesor":"MELENDEZ, MARIO","email":"mario.melendez@utp.ac.pa","bloques":[[4,870,1015,"CL","3-319"]]}
+  ]}
+]

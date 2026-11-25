@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <!-- style-src-attr: SVG de Ajustes -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Horario</title>
+  <meta name="description" content="Arma tu horario sin choques, ordenado según tus preferencias.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f4f4f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/tema.js"></script>
+  <script type="module" src="js/main.js"></script>
+  <!-- Evita la cascada de imports -->
+  <link rel="modulepreload" href="js/ui.js">
+  <link rel="modulepreload" href="js/busqueda.js">
+  <link rel="modulepreload" href="js/carrusel.js">
+  <link rel="modulepreload" href="js/deshacer.js">
+  <link rel="modulepreload" href="js/elecciones.js">
+  <link rel="modulepreload" href="js/filtros.js">
+  <link rel="modulepreload" href="js/horario.js">
+  <link rel="modulepreload" href="js/inspector.js">
+  <link rel="modulepreload" href="js/manual.js">
+  <link rel="modulepreload" href="js/materias.js">
+  <link rel="modulepreload" href="js/calendario.js">
+  <link rel="modulepreload" href="js/dom.js">
+  <link rel="modulepreload" href="js/ajustes.js">
+  <link rel="modulepreload" href="js/estado.js">
+  <link rel="modulepreload" href="js/modelo.js">
+  <link rel="modulepreload" href="js/entrada.js">
+  <link rel="modulepreload" href="js/solver.js">
+  <link rel="modulepreload" href="js/preferencias.js">
+  <link rel="modulepreload" href="js/periodos.js">
+  <link rel="modulepreload" href="js/resorte.js">
+  <link rel="modulepreload" href="js/bits.js">
+</head>
+<body>
+  <header>
+    <nav aria-label="Pasos">
+      <ol id="pasos" class="vidrio">
+        <li class="pildora" aria-hidden="true"></li>
+        <li><a href="#materias" aria-current="step"><span>Materias</span></a></li>
+        <li><a href="#opciones"><span>Horario</span></a></li>
+      </ol>
+    </nav>
+    <div class="herramientas vidrio">
+      <button type="button" class="fantasma chico" commandfor="dialogo-ajustes" command="show-modal">Ajustes</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="materias" aria-labelledby="t-materias">
+      <div class="cabeza">
+        <h2 id="t-materias" tabindex="-1">Materias</h2>
+        <p class="acciones vidrio-movil"><a href="#opciones" class="boton">Ver horario</a></p>
+      </div>
+      <div id="grupos" class="fila grupos"></div>
+      <div id="entrada">
+        <div id="agregar" class="tarjeta agregar">
+          <label for="pegar" class="titulo">Pega el horario de tu grupo</label>
+          <textarea id="pegar" rows="3" placeholder="Matrícula → Grupos por Asignatura → Horario del Grupo. Ctrl+A, Ctrl+C y pega aquí."></textarea>
+          <p class="fila">
+            <label class="boton secundario">Subir archivo
+              <input type="file" id="archivos" accept=".html,.htm,.json" multiple hidden>
+            </label>
+            <button type="button" id="ejemplo" class="secundario">Ejemplo</button>
+          </p>
+          <p id="msg-datos" role="status"></p>
+        </div>
+        <div id="a-mano" class="tarjeta agregar"></div>
+      </div>
+      <div id="contenido-materias"></div>
+    </section>
+
+    <section id="opciones" aria-labelledby="t-opciones" hidden>
+      <div class="cabeza">
+        <h2 id="t-opciones" tabindex="-1">Horario</h2>
+        <p class="acciones vidrio-movil"><a href="#materias" class="boton secundario">Atrás</a></p>
+      </div>
+      <div id="contenido-opciones"></div>
+    </section>
+
+  </main>
+
+  <!-- autofocus en el diálogo: en celular abría desplazado -->
+  <dialog id="dialogo-ajustes" class="dialogo" aria-labelledby="ajustes-titulo" closedby="any" autofocus>
+    <div class="dialogo-agarre" aria-hidden="true"></div>
+    <h2 id="ajustes-titulo">Ajustes</h2>
+    <div id="contenido-ajustes"></div>
+    <form method="dialog" class="acciones"><button class="secundario">Listo</button></form>
+  </dialog>
+
+  <dialog id="dialogo-borrar" class="dialogo" role="alertdialog" aria-labelledby="borrar-titulo" closedby="any">
+    <div class="dialogo-agarre" aria-hidden="true"></div>
+    <h2 id="borrar-titulo">¿Borrar horarios y preferencias?</h2>
+    <p>No se puede deshacer.</p>
+    <form method="dialog" class="acciones">
+      <button class="secundario" value="cancelar" autofocus>Cancelar</button>
+      <button class="peligro" value="borrar">Borrar</button>
+    </form>
+  </dialog>
+
+  <div id="tostada" class="tostada" role="status" aria-live="polite"></div>
+</body>
+</html>
